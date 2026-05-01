@@ -1,0 +1,27 @@
+[project]
+name = "azure-voicelive-support-agent"
+version = "0.1.0"
+description = "An end-to-end sample of a voice-based support agent built on Azure Voice Live API"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[tool.uv.workspace]
+members = [
+    "services/frontdesk",
+    "services/faultdesk",
+    "packages/voiceshared"
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
