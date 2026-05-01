@@ -1,0 +1,76 @@
+.transcript-log {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 150px);
+}
+
+.transcript-log h3 {
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  color: #fff;
+}
+
+.transcript-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.transcript-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: 8px;
+  max-width: 80%;
+}
+
+.transcript-item.user {
+  align-self: flex-end;
+  background: #667eea;
+  color: white;
+}
+
+.transcript-item.assistant {
+  align-self: flex-start;
+  background: #242424;
+  border: 1px solid #333;
+  color: #ddd;
+}
+
+.transcript-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.transcript-role {
+  font-weight: 600;
+}
+
+.transcript-time {
+  font-size: 0.7rem;
+}
+
+.transcript-text {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  word-wrap: break-word;
+}

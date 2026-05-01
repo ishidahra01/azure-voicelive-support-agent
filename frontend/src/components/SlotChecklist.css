@@ -1,0 +1,84 @@
+.slot-checklist {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.slot-checklist h3 {
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  color: #fff;
+}
+
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.slot-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+  background: #242424;
+  border: 1px solid #333;
+}
+
+.slot-item.filled {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.slot-item.pending {
+  border-color: #666;
+}
+
+.slot-checkbox {
+  font-size: 1.2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.slot-item.filled .slot-checkbox {
+  color: #10b981;
+}
+
+.slot-item.pending .slot-checkbox {
+  color: #666;
+}
+
+.slot-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.slot-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #ddd;
+}
+
+.slot-value {
+  font-size: 0.8rem;
+  color: #10b981;
+  font-weight: 600;
+}
+
+.slot-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.slot-badge.required {
+  background: #ef4444;
+  color: white;
+}

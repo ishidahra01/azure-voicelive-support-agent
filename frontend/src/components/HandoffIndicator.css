@@ -1,0 +1,91 @@
+.handoff-indicator {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.handoff-indicator.initiating {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.handoff-indicator.connecting {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.handoff-indicator.connected {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.handoff-indicator.failed {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.handoff-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.handoff-indicator.initiating .handoff-icon,
+.handoff-indicator.connecting .handoff-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.handoff-indicator.initiating .handoff-icon {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+.handoff-indicator.connecting .handoff-icon {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.handoff-indicator.connected .handoff-icon {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.handoff-indicator.failed .handoff-icon {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.handoff-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.handoff-status {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.handoff-desk {
+  font-size: 0.85rem;
+  color: #aaa;
+}
