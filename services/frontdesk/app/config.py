@@ -52,9 +52,7 @@ class FrontdeskConfig(BaseSettings):
     # Voice configuration
     voice_name: str = Field(default="ja-JP-NanamiNeural", description="Voice to use")
     voice_temperature: float = Field(default=0.7, description="Voice temperature")
-    turn_detection_threshold: float = Field(
-        default=0.5, description="Turn detection threshold"
-    )
+    turn_detection_threshold: float = Field(default=0.5, description="Turn detection threshold")
 
 
 # Global config instance

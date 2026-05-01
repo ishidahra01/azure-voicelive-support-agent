@@ -1,6 +1,6 @@
 """Phases package initialization."""
 
-from .definitions import PHASES, PHASE_ORDER, Phase, get_next_phase, is_valid_phase
+from .definitions import PHASE_ORDER, PHASES, Phase, get_next_phase, is_valid_phase
 from .transitions import PHASE_TRANSITIONS, can_transition, get_allowed_transitions
 
 __all__ = [

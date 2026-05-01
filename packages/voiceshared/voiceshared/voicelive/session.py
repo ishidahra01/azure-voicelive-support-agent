@@ -5,7 +5,6 @@ Provides a higher-level abstraction over the Azure Voice Live SDK for creating
 and managing real-time voice sessions.
 """
 
-import asyncio
 import logging
 from typing import Any, Callable, Dict, List, Optional
 

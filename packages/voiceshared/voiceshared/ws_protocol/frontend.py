@@ -6,7 +6,7 @@ Defines message types exchanged between the browser client and backend services.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +31,7 @@ class MessageType(str, Enum):
 class AudioMessage(BaseModel):
     """Audio data message from client to server."""
 
-    type: str = Field(default=MessageType.AUDIO, const=True)
+    type: Literal[MessageType.AUDIO] = MessageType.AUDIO
     audio: str  # Base64-encoded PCM16 audio
     timestamp: Optional[datetime] = None
 
@@ -39,7 +39,7 @@ class AudioMessage(BaseModel):
 class ControlMessage(BaseModel):
     """Control message from client."""
 
-    type: str = Field(default=MessageType.CONTROL, const=True)
+    type: Literal[MessageType.CONTROL] = MessageType.CONTROL
     action: str  # "start", "stop", "mute", "unmute", "end"
     params: Optional[Dict[str, Any]] = None
 
@@ -47,7 +47,7 @@ class ControlMessage(BaseModel):
 class TranscriptMessage(BaseModel):
     """Transcript message to client."""
 
-    type: str = Field(default=MessageType.TRANSCRIPT, const=True)
+    type: Literal[MessageType.TRANSCRIPT] = MessageType.TRANSCRIPT
     role: str  # "user" or "assistant"
     text: str
     is_final: bool = True
@@ -57,7 +57,7 @@ class TranscriptMessage(BaseModel):
 class PhaseChangedMessage(BaseModel):
     """Phase transition notification to client."""
 
-    type: str = Field(default=MessageType.PHASE_CHANGED, const=True)
+    type: Literal[MessageType.PHASE_CHANGED] = MessageType.PHASE_CHANGED
     from_phase: Optional[str] = Field(None, alias="from")
     to_phase: str = Field(..., alias="to")
     trigger: str  # What triggered the phase change
@@ -80,7 +80,7 @@ class SlotInfo(BaseModel):
 class SlotsSnapshotMessage(BaseModel):
     """Snapshot of all slots in current phase."""
 
-    type: str = Field(default=MessageType.SLOTS_SNAPSHOT, const=True)
+    type: Literal[MessageType.SLOTS_SNAPSHOT] = MessageType.SLOTS_SNAPSHOT
     phase: str
     slots: List[SlotInfo]
     timestamp: Optional[datetime] = Field(default_factory=datetime.utcnow)
@@ -89,7 +89,7 @@ class SlotsSnapshotMessage(BaseModel):
 class ToolCallMessage(BaseModel):
     """Tool call notification to client."""
 
-    type: str = Field(default=MessageType.TOOL_CALL, const=True)
+    type: Literal[MessageType.TOOL_CALL] = MessageType.TOOL_CALL
     tool_name: str
     arguments: Dict[str, Any]
     call_id: str
@@ -102,7 +102,7 @@ class ToolCallMessage(BaseModel):
 class HandoffStatusMessage(BaseModel):
     """Handoff status notification to client."""
 
-    type: str = Field(default=MessageType.HANDOFF_STATUS, const=True)
+    type: Literal[MessageType.HANDOFF_STATUS] = MessageType.HANDOFF_STATUS
     status: str  # "initiated", "connecting", "connected", "failed"
     target_desk: str  # "faultdesk", "billingdesk", etc.
     message: Optional[str] = None
@@ -112,7 +112,7 @@ class HandoffStatusMessage(BaseModel):
 class SessionEndMessage(BaseModel):
     """Session end notification to client."""
 
-    type: str = Field(default=MessageType.SESSION_END, const=True)
+    type: Literal[MessageType.SESSION_END] = MessageType.SESSION_END
     reason: str  # "normal", "error", "timeout", "handoff"
     message: Optional[str] = None
     call_log_id: Optional[str] = None
@@ -122,7 +122,7 @@ class SessionEndMessage(BaseModel):
 class ErrorMessage(BaseModel):
     """Error notification to client."""
 
-    type: str = Field(default=MessageType.ERROR, const=True)
+    type: Literal[MessageType.ERROR] = MessageType.ERROR
     code: str
     message: str
     details: Optional[Dict[str, Any]] = None

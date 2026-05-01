@@ -4,7 +4,6 @@ Frontdesk FastAPI application.
 Main entry point for the frontdesk triage and routing service.
 """
 
-import json
 import logging
 import uuid
 from datetime import datetime
@@ -13,18 +12,17 @@ from typing import Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pythonjsonlogger import jsonlogger
+from voiceshared.ws_protocol.frontend import ErrorMessage
 
 from app.config import config
 from app.handoff import HandoffManager
-from app.triage import get_triage_instructions, register_triage_tools
-from voiceshared.tools import get_tool_schemas
-from voiceshared.ws_protocol.frontend import ErrorMessage, TranscriptMessage
+from app.triage import register_triage_tools
 
 # Configure logging
-logHandler = logging.StreamHandler()
+log_handler = logging.StreamHandler()
 formatter = jsonlogger.JsonFormatter()
-logHandler.setFormatter(formatter)
-logging.root.addHandler(logHandler)
+log_handler.setFormatter(formatter)
+logging.root.addHandler(log_handler)
 logging.root.setLevel(config.log_level)
 
 logger = logging.getLogger(__name__)
@@ -117,12 +115,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         # Send initial greeting
-        await websocket.send_json({
-            "type": "transcript",
-            "role": "assistant",
-            "text": "お電話ありがとうございます。本日はどのようなご用件でしょうか？",
-            "is_final": True,
-        })
+        await websocket.send_json(
+            {
+                "type": "transcript",
+                "role": "assistant",
+                "text": "お電話ありがとうございます。本日はどのようなご用件でしょうか？",
+                "is_final": True,
+            }
+        )
 
         # Note: In a real implementation, we would:
         # 1. Create Voice Live session with triage instructions
@@ -142,17 +142,25 @@ async def websocket_endpoint(websocket: WebSocket):
                 # In real impl: forward to Voice Live
                 logger.debug(f"Received audio frame from browser: {call_id}")
 
+                if session.get("handoff_manager") and session["handoff_manager"].active:
+                    await session["handoff_manager"].forward_from_browser(data)
+
             elif msg_type == "control":
                 action = data.get("action")
                 logger.info(f"Control action: {action} for call {call_id}")
 
+                if session.get("handoff_manager") and session["handoff_manager"].active:
+                    await session["handoff_manager"].forward_from_browser(data)
+
                 if action == "end":
                     # End call
-                    await websocket.send_json({
-                        "type": "session_end",
-                        "reason": "normal",
-                        "message": "お電話ありがとうございました",
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "session_end",
+                            "reason": "normal",
+                            "message": "お電話ありがとうございました",
+                        }
+                    )
                     break
 
             # Demo: Simulate tool call detection
@@ -166,12 +174,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 session["handoff_manager"] = handoff_mgr
 
                 # Send handoff status
-                await websocket.send_json({
-                    "type": "handoff_status",
-                    "status": "initiating",
-                    "target_desk": "fault",
-                    "message": "故障窓口におつなぎしています",
-                })
+                await websocket.send_json(
+                    {
+                        "type": "handoff_status",
+                        "status": "initiating",
+                        "target_desk": "fault",
+                        "message": "故障窓口におつなぎしています",
+                    }
+                )
 
                 # Initiate handoff
                 success = await handoff_mgr.initiate_handoff(
@@ -185,11 +195,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     session["phase"] = "handoff"
                 else:
                     logger.error(f"Handoff failed for call {call_id}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "code": "HANDOFF_FAILED",
-                        "message": "申し訳ございません。接続に失敗しました。",
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "code": "HANDOFF_FAILED",
+                            "message": "申し訳ございません。接続に失敗しました。",
+                        }
+                    )
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {call_id}")
@@ -202,7 +214,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 message="システムエラーが発生しました",
             )
             await websocket.send_json(error_msg.model_dump())
-        except:
+        except Exception:
             pass
 
     finally:

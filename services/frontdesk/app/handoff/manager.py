@@ -8,7 +8,6 @@ connection management and audio stream bridging.
 import asyncio
 import json
 import logging
-import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -38,6 +37,7 @@ class HandoffManager:
         self.desk_ws: Optional[websockets.WebSocketClientProtocol] = None
         self.active = False
         self.desk_session_id: Optional[str] = None
+        self._upstream_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
 
     async def initiate_handoff(
         self,
@@ -97,12 +97,14 @@ class HandoffManager:
                     logger.info(f"Handoff acknowledged by {desk_name}")
 
                     # Send handoff status to browser
-                    await self.browser_ws.send_json({
-                        "type": "handoff_status",
-                        "status": "connected",
-                        "target_desk": desk_name,
-                        "message": f"Connected to {desk_name}",
-                    })
+                    await self.browser_ws.send_json(
+                        {
+                            "type": "handoff_status",
+                            "status": "connected",
+                            "target_desk": desk_name,
+                            "message": f"Connected to {desk_name}",
+                        }
+                    )
 
                     # Start audio bridging
                     asyncio.create_task(self._bridge_audio())
@@ -148,12 +150,33 @@ class HandoffManager:
             logger.error(f"Error in audio bridge: {e}", exc_info=True)
 
     async def _bridge_upstream(self):
-        """Bridge audio from browser to desk (upstream)."""
-        # Note: In real implementation, this would receive audio from browser
-        # and forward to desk. For now, this is a placeholder.
+        """Bridge audio/control from browser to desk (upstream)."""
+        if not self.desk_ws:
+            return
+
         logger.debug("Upstream bridge started")
-        # Placeholder - actual implementation would handle audio frames
-        await asyncio.sleep(3600)  # Keep alive
+
+        while self.active and self.desk_ws:
+            message = await self._upstream_queue.get()
+            try:
+                await self.desk_ws.send(json.dumps(message))
+            except websockets.exceptions.ConnectionClosed:
+                logger.info(f"Desk connection closed for call {self.call_id}")
+                self.active = False
+                break
+            except Exception as e:
+                logger.error(f"Error forwarding upstream message: {e}", exc_info=True)
+
+    async def forward_from_browser(self, message: Dict[str, Any]) -> None:
+        """Queue a browser-originated message to be forwarded to desk."""
+        if not self.active:
+            return
+
+        msg_type = message.get("type")
+        if msg_type not in {"audio", "control"}:
+            return
+
+        await self._upstream_queue.put(message)
 
     async def _bridge_downstream(self):
         """Bridge audio and messages from desk to browser (downstream)."""

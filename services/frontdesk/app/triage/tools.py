@@ -34,9 +34,7 @@ logger = logging.getLogger(__name__)
         "required": ["summary"],
     },
 )
-async def route_to_fault_desk(
-    summary: str, caller_attrs: Optional[Dict[str, Any]] = None
-) -> str:
+async def route_to_fault_desk(summary: str, caller_attrs: Optional[Dict[str, Any]] = None) -> str:
     """
     Route call to fault desk.
 
@@ -71,9 +69,7 @@ async def route_to_fault_desk(
         "required": ["summary"],
     },
 )
-async def route_to_billing_desk(
-    summary: str, caller_attrs: Optional[Dict[str, Any]] = None
-) -> str:
+async def route_to_billing_desk(summary: str, caller_attrs: Optional[Dict[str, Any]] = None) -> str:
     """Route call to billing desk (future implementation)."""
     logger.info(f"Routing to billing desk: {summary}")
     return "料金窓口におつなぎいたします。そのままお待ちください。"
@@ -96,9 +92,7 @@ async def route_to_billing_desk(
         "required": ["summary"],
     },
 )
-async def route_to_general_desk(
-    summary: str, caller_attrs: Optional[Dict[str, Any]] = None
-) -> str:
+async def route_to_general_desk(summary: str, caller_attrs: Optional[Dict[str, Any]] = None) -> str:
     """Route call to general desk (future implementation)."""
     logger.info(f"Routing to general desk: {summary}")
     return "総合窓口におつなぎいたします。そのままお待ちください。"

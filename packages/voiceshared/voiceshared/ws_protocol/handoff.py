@@ -7,7 +7,7 @@ Defines message types exchanged between frontdesk and backend desk services
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -33,7 +33,7 @@ class HandoffMessageType(str, Enum):
 class HandoffInitMessage(BaseModel):
     """Initial handoff message from frontdesk to desk service."""
 
-    type: str = Field(default=HandoffMessageType.HANDOFF_INIT, const=True)
+    type: Literal[HandoffMessageType.HANDOFF_INIT] = HandoffMessageType.HANDOFF_INIT
     call_id: str
     triage_summary: str  # Summary of what the customer wants
     caller_attrs: Dict[str, Any]  # Caller attributes (phone number, area code, etc.)
@@ -45,7 +45,7 @@ class HandoffInitMessage(BaseModel):
 class HandoffAckMessage(BaseModel):
     """Acknowledgment from desk service that handoff was received."""
 
-    type: str = Field(default=HandoffMessageType.HANDOFF_ACK, const=True)
+    type: Literal[HandoffMessageType.HANDOFF_ACK] = HandoffMessageType.HANDOFF_ACK
     ready: bool
     desk_session_id: str
     message: Optional[str] = None
@@ -55,7 +55,7 @@ class HandoffAckMessage(BaseModel):
 class HandoffAudioMessage(BaseModel):
     """Audio data message in handoff protocol."""
 
-    type: str = Field(default=HandoffMessageType.AUDIO, const=True)
+    type: Literal[HandoffMessageType.AUDIO] = HandoffMessageType.AUDIO
     audio: str  # Base64-encoded PCM16 audio
     direction: str  # "upstream" (to desk) or "downstream" (from desk)
     timestamp: Optional[datetime] = None
@@ -64,7 +64,7 @@ class HandoffAudioMessage(BaseModel):
 class HandoffControlMessage(BaseModel):
     """Control message in handoff protocol."""
 
-    type: str = Field(default=HandoffMessageType.CONTROL, const=True)
+    type: Literal[HandoffMessageType.CONTROL] = HandoffMessageType.CONTROL
     action: str  # "pause", "resume", "end"
     params: Optional[Dict[str, Any]] = None
 
@@ -72,7 +72,7 @@ class HandoffControlMessage(BaseModel):
 class HandoffTranscriptMessage(BaseModel):
     """Transcript message from desk to frontdesk."""
 
-    type: str = Field(default=HandoffMessageType.TRANSCRIPT, const=True)
+    type: Literal[HandoffMessageType.TRANSCRIPT] = HandoffMessageType.TRANSCRIPT
     role: str  # "user" or "assistant"
     text: str
     is_final: bool = True
@@ -82,7 +82,7 @@ class HandoffTranscriptMessage(BaseModel):
 class HandoffPhaseChangedMessage(BaseModel):
     """Phase change notification from desk to frontdesk."""
 
-    type: str = Field(default=HandoffMessageType.PHASE_CHANGED, const=True)
+    type: Literal[HandoffMessageType.PHASE_CHANGED] = HandoffMessageType.PHASE_CHANGED
     from_phase: Optional[str] = Field(None, alias="from")
     to_phase: str = Field(..., alias="to")
     trigger: str
@@ -104,7 +104,7 @@ class HandoffSlotInfo(BaseModel):
 class HandoffSlotsSnapshotMessage(BaseModel):
     """Slots snapshot from desk to frontdesk."""
 
-    type: str = Field(default=HandoffMessageType.SLOTS_SNAPSHOT, const=True)
+    type: Literal[HandoffMessageType.SLOTS_SNAPSHOT] = HandoffMessageType.SLOTS_SNAPSHOT
     phase: str
     slots: List[HandoffSlotInfo]
     timestamp: Optional[datetime] = Field(default_factory=datetime.utcnow)
@@ -113,7 +113,7 @@ class HandoffSlotsSnapshotMessage(BaseModel):
 class HandoffToolCallMessage(BaseModel):
     """Tool call notification from desk to frontdesk."""
 
-    type: str = Field(default=HandoffMessageType.TOOL_CALL, const=True)
+    type: Literal[HandoffMessageType.TOOL_CALL] = HandoffMessageType.TOOL_CALL
     tool_name: str
     arguments: Dict[str, Any]
     call_id: str
@@ -126,7 +126,7 @@ class HandoffToolCallMessage(BaseModel):
 class HandoffSessionEndMessage(BaseModel):
     """Session end notification from desk to frontdesk."""
 
-    type: str = Field(default=HandoffMessageType.SESSION_END, const=True)
+    type: Literal[HandoffMessageType.SESSION_END] = HandoffMessageType.SESSION_END
     reason: str  # "normal", "error", "escalate"
     message: Optional[str] = None
     return_to_frontdesk: bool = False  # If True, return control to frontdesk
@@ -136,7 +136,7 @@ class HandoffSessionEndMessage(BaseModel):
 class HandoffErrorMessage(BaseModel):
     """Error notification in handoff protocol."""
 
-    type: str = Field(default=HandoffMessageType.ERROR, const=True)
+    type: Literal[HandoffMessageType.ERROR] = HandoffMessageType.ERROR
     code: str
     message: str
     details: Optional[Dict[str, Any]] = None

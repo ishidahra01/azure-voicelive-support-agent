@@ -33,26 +33,18 @@ class FaultdeskConfig(BaseSettings):
     )
 
     # External APIs
-    sf113_api_url: str = Field(
-        default="http://localhost:9001/api", description="113SF API URL"
-    )
-    cultas_api_url: str = Field(
-        default="http://localhost:9002/api", description="CULTAS API URL"
-    )
+    sf113_api_url: str = Field(default="http://localhost:9001/api", description="113SF API URL")
+    cultas_api_url: str = Field(default="http://localhost:9002/api", description="CULTAS API URL")
     ai_search_endpoint: str = Field(default="", description="AI Search endpoint")
     ai_search_api_key: str = Field(default="", description="AI Search API key")
 
     # Voice configuration
     voice_name: str = Field(default="ja-JP-NanamiNeural", description="Voice to use")
     voice_temperature: float = Field(default=0.7, description="Voice temperature")
-    turn_detection_threshold: float = Field(
-        default=0.5, description="Turn detection threshold"
-    )
+    turn_detection_threshold: float = Field(default=0.5, description="Turn detection threshold")
 
     # Call logs
-    call_logs_dir: Path = Field(
-        default=Path("./logs/calls"), description="Directory for call logs"
-    )
+    call_logs_dir: Path = Field(default=Path("./logs/calls"), description="Directory for call logs")
 
 
 # Global config instance

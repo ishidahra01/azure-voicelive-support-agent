@@ -78,9 +78,7 @@ class PhaseState:
 
         # Check if transition is allowed
         if not can_transition(self.current, target_phase):
-            logger.warning(
-                f"Transition not allowed: {self.current} -> {target_phase}"
-            )
+            logger.warning(f"Transition not allowed: {self.current} -> {target_phase}")
             return False
 
         # Record transition
@@ -95,9 +93,7 @@ class PhaseState:
         self.previous = self.current
         self.current = target_phase
 
-        logger.info(
-            f"Phase transition: {self.previous} -> {self.current} ({trigger})"
-        )
+        logger.info(f"Phase transition: {self.previous} -> {self.current} ({trigger})")
 
         return True
 

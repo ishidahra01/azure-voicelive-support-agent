@@ -5,7 +5,7 @@ Tools available to the Voice Live orchestrator for managing conversation flow.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from voiceshared.tools import register_tool
 
@@ -68,9 +68,7 @@ async def verify_identity(
         },
     },
 )
-async def interview_fault(
-    symptom: Optional[str] = None, started_at: Optional[str] = None
-) -> str:
+async def interview_fault(symptom: Optional[str] = None, started_at: Optional[str] = None) -> str:
     """Interview customer about fault (calls InterviewSkill)."""
     logger.info(f"Interviewing fault: symptom={symptom}")
     # In real impl: Call InterviewSkill
@@ -104,9 +102,7 @@ async def run_line_test(customer_id: str) -> str:
         },
     },
 )
-async def propose_visit_slots(
-    area_code: Optional[str] = None, urgency: str = "medium"
-) -> str:
+async def propose_visit_slots(area_code: Optional[str] = None, urgency: str = "medium") -> str:
     """Propose visit slots (calls VisitScheduleSkill)."""
     logger.info(f"Proposing visit slots: area={area_code}, urgency={urgency}")
     # In real impl: Call VisitScheduleSkill

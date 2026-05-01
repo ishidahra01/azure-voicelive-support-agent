@@ -454,7 +454,7 @@ If desk service disconnects during call:
 - [ ] Define message schemas (Pydantic models)
 - [ ] Implement frontdesk handoff manager
 - [ ] Implement desk handoff receiver
-- [ ] Audio bridge implementation
+- [x] Audio bridge implementation (upstream: browser → frontdesk → desk via /ws/voice audio frames)
 - [ ] State machine for both sides
 - [ ] Error handling and retry logic
 - [ ] Logging and monitoring

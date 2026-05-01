@@ -12,7 +12,6 @@ from typing import Dict
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pythonjsonlogger import jsonlogger
-from voiceshared.tools import get_tool_schemas
 from voiceshared.ws_protocol.handoff import HandoffInitMessage, parse_handoff_message
 
 from app.config import config
@@ -21,10 +20,10 @@ from app.orchestrator.tools import register_orchestrator_tools
 from app.slots import SlotStore
 
 # Configure logging
-logHandler = logging.StreamHandler()
+log_handler = logging.StreamHandler()
 formatter = jsonlogger.JsonFormatter()
-logHandler.setFormatter(formatter)
-logging.root.addHandler(logHandler)
+log_handler.setFormatter(formatter)
+logging.root.addHandler(log_handler)
 logging.root.setLevel(config.log_level)
 
 logger = logging.getLogger(__name__)
@@ -120,9 +119,7 @@ async def websocket_endpoint(websocket: WebSocket):
         triage_summary = handoff_msg.triage_summary
         caller_attrs = handoff_msg.caller_attrs
 
-        logger.info(
-            f"Handoff received for call {call_id}: {triage_summary}"
-        )
+        logger.info(f"Handoff received for call {call_id}: {triage_summary}")
 
         # Initialize session state
         phase_state = PhaseState(call_id, initial_phase="intake")
@@ -140,12 +137,14 @@ async def websocket_endpoint(websocket: WebSocket):
         active_sessions[call_id] = session
 
         # Send handoff_ack
-        await websocket.send_json({
-            "type": "handoff_ack",
-            "ready": True,
-            "desk_session_id": desk_session_id,
-            "message": "Faultdesk ready",
-        })
+        await websocket.send_json(
+            {
+                "type": "handoff_ack",
+                "ready": True,
+                "desk_session_id": desk_session_id,
+                "message": "Faultdesk ready",
+            }
+        )
 
         logger.info(f"Sent handoff_ack for call {call_id}")
 
@@ -165,30 +164,36 @@ async def websocket_endpoint(websocket: WebSocket):
         # 7. Regenerate instructions on each turn
 
         # Send initial greeting
-        await websocket.send_json({
-            "type": "transcript",
-            "role": "assistant",
-            "text": f"承知いたしました。{triage_summary}の件ですね。担当させていただきます。",
-            "is_final": True,
-        })
+        await websocket.send_json(
+            {
+                "type": "transcript",
+                "role": "assistant",
+                "text": f"承知いたしました。{triage_summary}の件ですね。担当させていただきます。",
+                "is_final": True,
+            }
+        )
 
         # Send initial phase
-        await websocket.send_json({
-            "type": "phase_changed",
-            "from": None,
-            "to": "intake",
-            "trigger": "handoff_init",
-        })
+        await websocket.send_json(
+            {
+                "type": "phase_changed",
+                "from": None,
+                "to": "intake",
+                "trigger": "handoff_init",
+            }
+        )
 
         # Send initial slots snapshot
-        await websocket.send_json({
-            "type": "slots_snapshot",
-            "phase": "intake",
-            "slots": [
-                {"name": "greeting_done", "status": "pending", "required": True},
-                {"name": "understood_intent", "status": "pending", "required": True},
-            ],
-        })
+        await websocket.send_json(
+            {
+                "type": "slots_snapshot",
+                "phase": "intake",
+                "slots": [
+                    {"name": "greeting_done", "status": "pending", "required": True},
+                    {"name": "understood_intent", "status": "pending", "required": True},
+                ],
+            }
+        )
 
         # Handle messages from frontdesk
         while True:
@@ -206,11 +211,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if action == "end":
                     # End session
-                    await websocket.send_json({
-                        "type": "session_end",
-                        "reason": "normal",
-                        "message": "対応完了",
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "session_end",
+                            "reason": "normal",
+                            "message": "対応完了",
+                        }
+                    )
                     break
 
             # Demo: Simulate phase progression
@@ -218,23 +225,27 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Progress to next phase
                 next_phase = phase_state.auto_progress()
                 if next_phase:
-                    await websocket.send_json({
-                        "type": "phase_changed",
-                        "from": phase_state.previous,
-                        "to": next_phase,
-                        "trigger": "auto_progression",
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "phase_changed",
+                            "from": phase_state.previous,
+                            "to": next_phase,
+                            "trigger": "auto_progression",
+                        }
+                    )
 
                     # Send updated slots snapshot
                     pending_slots = slot_store.get_pending_slots(next_phase)
-                    await websocket.send_json({
-                        "type": "slots_snapshot",
-                        "phase": next_phase,
-                        "slots": [
-                            {"name": s, "status": "pending", "required": True}
-                            for s in pending_slots
-                        ],
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "slots_snapshot",
+                            "phase": next_phase,
+                            "slots": [
+                                {"name": s, "status": "pending", "required": True}
+                                for s in pending_slots
+                            ],
+                        }
+                    )
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {desk_session_id}")
