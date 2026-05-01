@@ -125,12 +125,22 @@ async def websocket_endpoint(websocket: WebSocket):
         phase_state = PhaseState(call_id, initial_phase="intake")
         slot_store = SlotStore(call_id)
 
+        # Import context and tools
+        from app.context import CallLog
+        from app.orchestrator.tools import set_tool_context
+
+        call_log = CallLog(call_id)
+
+        # Set tool context for skill execution
+        set_tool_context(call_id, slot_store, phase_state, call_log)
+
         session = {
             "call_id": call_id,
             "desk_session_id": desk_session_id,
             "started_at": datetime.utcnow(),
             "phase_state": phase_state,
             "slot_store": slot_store,
+            "call_log": call_log,
             "triage_summary": triage_summary,
             "caller_attrs": caller_attrs,
         }
@@ -154,14 +164,62 @@ async def websocket_endpoint(websocket: WebSocket):
         )
         logger.debug(f"Initial instructions: {instructions[:200]}...")
 
-        # Note: In a real implementation, we would:
-        # 1. Create Voice Live session with generated instructions
-        # 2. Handle audio frames from frontdesk
-        # 3. Process Voice Live events
-        # 4. Execute tools when called
-        # 5. Update phase_state and slot_store
-        # 6. Send phase_changed and slots_snapshot messages
-        # 7. Regenerate instructions on each turn
+        # ===================================================================
+        # VOICE LIVE INTEGRATION PLACEHOLDER
+        # ===================================================================
+        # In a complete implementation with Azure Voice Live SDK, this section would:
+        #
+        # 1. Create Voice Live session:
+        #    from voiceshared.voicelive import create_voice_session
+        #    voice_session = await create_voice_session(
+        #        instructions=instructions,
+        #        tools=get_registered_tools(),  # from orchestrator.tools
+        #        voice_name=config.voice_name,
+        #        model=config.azure_openai_model,
+        #    )
+        #
+        # 2. Handle audio frames:
+        #    - Receive audio from frontdesk WebSocket
+        #    - Forward to Voice Live session
+        #    - Receive audio responses from Voice Live
+        #    - Send back to frontdesk (which forwards to browser)
+        #
+        # 3. Process Voice Live events in event loop:
+        #    while True:
+        #        event = await voice_session.receive_event()
+        #        if event.type == "transcript":
+        #            # Log utterance
+        #            call_log.add_utterance(event.role, event.text)
+        #            # Forward to browser
+        #            await websocket.send_json({...})
+        #        elif event.type == "tool_call":
+        #            # Execute tool (which calls skill)
+        #            result = await execute_tool(event.tool_name, event.arguments)
+        #            # Tool execution automatically updates slot_store
+        #            # Send tool result back to Voice Live
+        #            await voice_session.send_tool_result(event.call_id, result)
+        #            # Send updated slots_snapshot to browser
+        #            await websocket.send_json(slot_store.get_snapshot())
+        #        elif event.type == "audio":
+        #            # Forward audio to frontdesk/browser
+        #            await websocket.send_json({...})
+        #
+        # 4. Regenerate instructions after each tool execution:
+        #    new_instructions = generate_instructions(phase_state, slot_store)
+        #    await voice_session.update_instructions(new_instructions)
+        #
+        # 5. Handle phase transitions:
+        #    # When phase_state changes, send phase_changed event
+        #    await websocket.send_json({
+        #        "type": "phase_changed",
+        #        "from": old_phase,
+        #        "to": new_phase,
+        #        "trigger": trigger,
+        #    })
+        #
+        # The current implementation below is a simplified demonstration showing
+        # the data flow without actual Voice Live SDK integration.
+        # ==================================================================
 
         # Send initial greeting
         await websocket.send_json(
@@ -259,9 +317,14 @@ async def websocket_endpoint(websocket: WebSocket):
             session = active_sessions[call_id]
             phase_state = session["phase_state"]
             slot_store = session["slot_store"]
+            call_log = session.get("call_log")
+
+            # End call log if it exists
+            if call_log:
+                call_log.end_call()
 
             # Export call log
-            call_log = {
+            call_log_data = {
                 "call_id": call_id,
                 "desk_session_id": desk_session_id,
                 "started_at": session["started_at"].isoformat(),
@@ -271,10 +334,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 "slots": slot_store.export(),
             }
 
+            # Add detailed call log if available
+            if call_log:
+                call_log_data["detailed_log"] = call_log.export()
+
             # Save to file
             log_file = config.call_logs_dir / f"{call_id}.json"
             with open(log_file, "w", encoding="utf-8") as f:
-                json.dump(call_log, f, ensure_ascii=False, indent=2)
+                json.dump(call_log_data, f, ensure_ascii=False, indent=2)
 
             logger.info(f"Call log saved: {log_file}")
 

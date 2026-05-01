@@ -243,3 +243,25 @@ async def create_oob_client(
     """
     config = OOBConfig(endpoint=endpoint, api_key=api_key, **kwargs)
     return OOBClient(config)
+
+
+# Global instance for mock/demo usage
+_oob_client: Optional[OOBClient] = None
+
+
+def get_oob_client() -> OOBClient:
+    """
+    Get or create global OOB client instance.
+
+    For demo/test purposes. In production, create client instances explicitly.
+    """
+    global _oob_client
+    if _oob_client is None:
+        # Create a mock client with placeholder config
+        # In real usage, this would use actual Azure credentials from config
+        config = OOBConfig(
+            endpoint="https://example.openai.azure.com",
+            api_key="mock-key",
+        )
+        _oob_client = OOBClient(config)
+    return _oob_client

@@ -124,12 +124,50 @@ async def websocket_endpoint(websocket: WebSocket):
             }
         )
 
-        # Note: In a real implementation, we would:
-        # 1. Create Voice Live session with triage instructions
-        # 2. Handle audio frames from browser
-        # 3. Process Voice Live events
-        # 4. Execute tools when called
-        # 5. Trigger handoff when route_to_*_desk is called
+        # ===================================================================
+        # VOICE LIVE INTEGRATION PLACEHOLDER
+        # ===================================================================
+        # In a complete implementation with Azure Voice Live SDK, this section would:
+        #
+        # 1. Create Voice Live session for triage:
+        #    from voiceshared.voicelive import create_voice_session
+        #    voice_session = await create_voice_session(
+        #        instructions=get_triage_instructions(),
+        #        tools=[route_to_fault_desk, route_to_billing_desk, ...],
+        #        voice_name=config.voice_name,
+        #        model=config.azure_openai_model,
+        #    )
+        #
+        # 2. Handle audio frames:
+        #    - Receive PCM16 audio from browser
+        #    - Forward to Voice Live session
+        #    - Receive audio responses from Voice Live
+        #    - Send back to browser
+        #
+        # 3. Process Voice Live events:
+        #    while True:
+        #        event = await voice_session.receive_event()
+        #        if event.type == "transcript":
+        #            await websocket.send_json({...})
+        #        elif event.type == "tool_call":
+        #            if event.tool_name == "route_to_fault_desk":
+        #                # Initiate handoff to faultdesk
+        #                handoff_mgr = HandoffManager(call_id, websocket)
+        #                await handoff_mgr.initiate_handoff(...)
+        #                # Detach Voice Live session
+        #                await voice_session.detach()
+        #            # Execute other tools normally
+        #        elif event.type == "audio":
+        #            await websocket.send_json({...})
+        #
+        # 4. After handoff:
+        #    - Voice Live session is detached
+        #    - Handoff manager bridges browser ↔ faultdesk
+        #    - Frontdesk becomes a transparent audio relay
+        #
+        # The current implementation shows the handoff flow without actual
+        # Voice Live SDK integration.
+        # ===================================================================
 
         # For this demonstration, we'll handle basic WebSocket messages
         while True:
