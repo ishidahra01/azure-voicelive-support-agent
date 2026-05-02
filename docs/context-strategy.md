@@ -2,487 +2,493 @@
 
 ## Overview
 
-The context management strategy defines how conversation state, customer information, and business data flow through the system across multiple layers. Proper context management is critical for:
-- Maintaining coherent conversations
-- Avoiding information loss during handoffs
-- Preventing context overflow in Voice Live
-- Enabling skill-specific context isolation
-- Supporting debugging and analytics
+This document describes how conversation history, handoff context, customer facts, and skill execution context are managed in the current implementation.
+
+The core design decision is:
+
+**Do not use Microsoft Agent Framework `AgentSession` as the long-term call memory.**
+
+Instead, the system separates context by responsibility:
+
+- Voice Live keeps the real-time conversational flow for the active desk.
+- `PhaseState` tracks where the business process is.
+- `SlotStore` is the source of truth for confirmed business facts.
+- `CallLog` records what happened for audit, debugging, and later summarization.
+- Microsoft Agent Framework (MAF) runs short-lived skill tasks with dynamic `SkillsProvider` loading.
+- Handoff messages transfer only the context needed by the receiving desk.
+
+This keeps voice interaction natural while making the business state explicit and recoverable.
+
+## Source Of Truth
+
+| Context Type | Source of Truth | Used For | Long-Lived? |
+| --- | --- | --- | --- |
+| Real-time conversation | Active Voice Live session | Natural turn-taking, interruption handling, assistant speech | Per desk session |
+| Business phase | `PhaseState` | Current workflow phase and transition decisions | Per call |
+| Confirmed facts | `SlotStore` | Identity, fault details, visit booking, closing state | Per call |
+| Handoff facts | `handoff_init` fields and seeded slots | Continuing after frontdesk -> faultdesk | Per handoff / per call |
+| Audit history | `CallLog` and saved JSON | Debugging, QA, post-call analysis | Exported at call end |
+| Skill procedure context | MAF `SkillsProvider` + fresh `AgentSession` | Loading `SKILL.md`, choosing backend tools, producing a short result | Per skill task |
+| Backend integration details | Adapter logs and tool-call results | Troubleshooting external systems | Logged separately |
 
 ## Context Layers
 
-### Layer 1: Voice Live Conversation History
+### Layer 1: Voice Live Session Context
 
-**Location**: Voice Live session + `context/call_log.py`
+**Purpose:** Maintain the real-time spoken conversation for the currently active desk.
 
-**Content**:
-- User utterances (transcribed speech)
-- Assistant responses (generated text + audio)
-- Function call records (tool name, arguments, results)
-- Session events (phase changes, errors)
+**Current behavior:**
 
-**Size Management**:
-- Voice Live has a context window limit (~128K tokens for gpt-4o-realtime)
-- Old utterances summarized when approaching limit
-- Summarization triggered at 80% capacity
-- Recent 10-15 exchanges kept verbatim
+- Frontdesk creates a Voice Live session for triage.
+- When routing to faultdesk succeeds, frontdesk closes its Voice Live session and bridges browser audio to faultdesk.
+- Faultdesk creates a new Voice Live session with faultdesk-specific instructions and tools.
+- Voice Live receives audio, emits transcripts, generates assistant audio, and calls registered tools.
 
-**Flow to Voice Live**:
-- **Flowing**: All utterances and responses flow naturally
-- **Summarization**: Old content replaced with summaries via SummarizerSkill
-- **Injection Point**: Via session update, not in instructions
+**What belongs here:**
 
-**Example**:
-```
-[Turn 1]
-User: インターネットが繋がらないんです
-Assistant: 承知いたしました。お客様番号を教えていただけますか
+- Recent spoken turns for the active desk.
+- Turn detection state.
+- Assistant audio response state.
+- Tool call decisions made by the real-time model.
 
-[Turn 2]
-User: 12345678です
-Assistant: ありがとうございます。山田太郎様ですね
+**What does not belong here:**
 
-... (10 more turns) ...
+- Raw backend API payloads.
+- Long-term business state.
+- Full call audit history.
+- MAF skill-internal reasoning.
 
-[Turn 13 - After Summarization]
-Summary: Customer reported internet outage. Identity verified (ID: 12345678, 山田太郎様).
-         Fault occurred 3 days ago. Router lights: power=on, wan=off.
+Voice Live context is treated as useful but not authoritative. If Voice Live forgets or summarizes something, the business state still comes from `SlotStore` and `PhaseState`.
 
-[Turn 14]
-User: いつ修理に来ていただけますか
-Assistant: ...
-```
+### Layer 2: Handoff Context
 
----
+**Purpose:** Move the minimum useful context from one desk service to another without carrying the entire Voice Live session.
 
-### Layer 2: SlotStore (Persistent Structured State)
+**Current frontdesk -> faultdesk payload:**
 
-**Location**: `slots/store.py`
-
-**Content**:
-- All slot values across all phases
-- Slot status (pending/filled/invalid)
-- Validation errors
-- Update timestamps
-
-**Persistence**:
-- In-memory during call (Python dict)
-- Exported to JSON at call end
-- Optionally stored in database for analytics
-
-**Flow to Voice Live**:
-- **Not flowing** directly into conversation history
-- **Injected into instructions** every turn
-- Appears in system prompt as structured data
-
-**Injection Method**:
-```python
-def update_instructions(current_phase, slot_store):
-    instructions = f"""
-    You are a fault desk agent.
-
-    Current Phase: {current_phase}
-
-    Confirmed Information:
-    {format_filled_slots(slot_store)}
-
-    Pending Information:
-    {format_pending_slots(current_phase, slot_store)}
-
-    Your task: Collect pending information through natural conversation.
-    """
-
-    session.update(instructions=instructions)
-```
-
-**Example Injection**:
-```
-Confirmed Information:
-[identity]
-- customer_id: 12345678
-- name_match: True (山田太郎様)
-- contact_phone: 03-1234-5678
-
-[interview]
-- fault_symptom: インターネット不通
-- fault_started_at: 3日前
-
-Pending Information (interview phase):
-- indoor_env: 室内機器の状況 (required)
-- line_test_result: 回線試験結果 (optional)
-```
-
----
-
-### Layer 3: Skill-Specific AgentThreads
-
-**Location**: Microsoft Agent Framework `AgentThread` (per call_id × skill_name)
-
-**Content**:
-- Skill-internal conversation history
-- Tool calls made by skill
-- Intermediate reasoning steps
-- Partial results
-
-**Isolation**:
-- Each skill has its own thread
-- Threads are isolated from each other
-- Threads are isolated from Voice Live main context
-- Threads persist across skill invocations within same call
-
-**Flow to Voice Live**:
-- **Not flowing**: Skill internals never exposed to Voice Live
-- **Only final results flow**: Structured output + conversational summary
-
-**Example**:
-```
-[IdentitySkill Thread for call_abc123]
-
-Turn 1:
-System: You are an identity verification specialist...
-User: Verify customer with ID 12345678
-Assistant: Let me query the customer database.
-Tool: sf113_get_customer(12345678)
-Result: {name: "山田太郎", address: "東京都..."}
-
-Turn 2:
-User: Does name "山田太郎" match?
-Assistant: Yes, exact match confirmed.
-
-[This internal dialogue never reaches Voice Live orchestrator]
-[Only returned: {"verified": True, "customer_record": {...}}]
-```
-
----
-
-### Layer 4: Business API Logs
-
-**Location**: `adapters/*.py` + structured logs
-
-**Content**:
-- Raw API requests to 113SF, CULTAS, AI Search
-- Raw API responses (complete payload)
-- API latency and error details
-- Retry attempts and outcomes
-
-**Purpose**:
-- Audit trail for external system interactions
-- Debugging integration issues
-- Performance monitoring
-- Compliance and security logging
-
-**Flow to Voice Live**:
-- **Never flows**: Too verbose and not relevant to conversation
-- **Logged separately**: Structured JSON logs with call_id correlation
-
-**Example Log Entry**:
 ```json
 {
-  "timestamp": "2026-05-01T03:15:30.123Z",
+  "type": "handoff_init",
   "call_id": "call_abc123",
-  "adapter": "sf113",
-  "method": "get_customer",
-  "request": {"customer_id": "12345678"},
-  "response": {
-    "customer_id": "12345678",
-    "name": "山田太郎",
-    "address": "東京都渋谷区...",
-    "contract_type": "fiber"
+  "triage_summary": "インターネットがつながらない",
+  "caller_attrs": {
+    "phone_number": "+81-3-1234-5678",
+    "area_code_hint": "03",
+    "customer_id": null
   },
-  "latency_ms": 245,
-  "success": true
+  "source_phase": "triage",
+  "context": {},
+  "timestamp": "2026-05-02T10:00:00Z"
 }
 ```
 
----
+**Faultdesk initialization from handoff:**
 
-### Layer 5: Phase Transition History
+- Start the faultdesk workflow at `identity`, not `intake`.
+- Mark intake facts as already completed.
+- Seed `interview.fault_symptom` from `triage_summary` when available.
+- Generate initial Voice Live instructions that explicitly say the handoff summary is known and should not be re-asked.
 
-**Location**: `orchestrator/phase_state.py`
+Example seeded state:
 
-**Content**:
-- Phase transition log (from → to)
-- Transition triggers (tool call, manual jump, auto progression)
-- Timestamps
-- Transition reasons
-
-**Purpose**:
-- UI display (phase badge timeline)
-- Analytics (average time per phase)
-- Debugging conversation flow
-- Understanding user behavior patterns
-
-**Flow to Voice Live**:
-- **Not flowing** into conversation
-- **Not in instructions** (only current phase shown)
-- **Sent to frontend** via `phase_changed` messages
-
-**Example**:
-```python
-phase_transitions = [
-    {
-        "from": None,
-        "to": "intake",
-        "trigger": "handoff_init",
-        "timestamp": "2026-05-01T03:12:35.000Z"
-    },
-    {
-        "from": "intake",
-        "to": "identity",
-        "trigger": "auto_progression",
-        "timestamp": "2026-05-01T03:13:10.000Z"
-    },
-    {
-        "from": "identity",
-        "to": "interview",
-        "trigger": "tool:verify_identity",
-        "timestamp": "2026-05-01T03:14:30.000Z"
-    }
-]
-```
-
----
-
-### Layer 6: Call Logs (Complete Call Record)
-
-**Location**: `context/call_log.py` → JSON export
-
-**Content**:
-- Complete conversation transcript
-- All slot values (final state)
-- Phase transition history
-- Tool call log (all tools with results)
-- Handoff information
-- Call metadata (duration, outcome, etc.)
-
-**Export Format**:
 ```json
 {
-  "call_id": "call_abc123",
-  "started_at": "2026-05-01T03:12:30.000Z",
-  "ended_at": "2026-05-01T03:20:15.000Z",
-  "duration_sec": 465,
-  "services": ["frontdesk", "faultdesk"],
-  "triage_summary": "インターネット故障",
-  "final_outcome": "visit_scheduled",
-
-  "transcript": [
-    {"timestamp": "...", "role": "user", "text": "..."},
-    {"timestamp": "...", "role": "assistant", "text": "..."},
-    ...
-  ],
-
-  "phase_transitions": [...],
-
+  "current_phase": "identity",
   "slots": {
-    "identity": {...},
-    "interview": {...},
-    "visit": {...},
-    "closing": {...}
-  },
-
-  "tool_calls": [
-    {
-      "timestamp": "...",
-      "tool": "verify_identity",
-      "arguments": {...},
-      "result": {...}
+    "intake": {
+      "greeting_done": true,
+      "understood_intent": true
     },
-    ...
-  ],
-
-  "metadata": {
-    "customer_id": "12345678",
-    "dispatch_id": "DS-123456",
-    "history_id": "H-789012"
+    "interview": {
+      "fault_symptom": "インターネットがつながらない"
+    }
   }
 }
 ```
 
-**Purpose**:
-- Post-call analysis
-- Quality assurance
-- Training data for model improvement
-- Customer service records
-- Compliance audit trail
+This is why faultdesk should ask for the customer number next instead of asking, "What can I help you with?"
 
-**Storage**:
-- Local JSON files (development)
-- Azure Blob Storage (production)
-- Optional: Azure Table Storage for queryability
+### Layer 3: PhaseState
 
----
+**Purpose:** Track the current business phase and phase transitions.
 
-## Context Flow Diagram
+Faultdesk uses the phase model:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ Voice Live Session                                              │
-│ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ Conversation History (L1)                                   │ │
-│ │ - Recent 10-15 turns verbatim                               │ │
-│ │ - Older turns summarized                                    │ │
-│ │ - Max ~100K tokens                                          │ │
-│ └─────────────────────────────────────────────────────────────┘ │
-│ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ Dynamic Instructions (updated every turn)                   │ │
-│ │ - Current phase                                             │ │
-│ │ - SlotStore snapshot (L2) ← INJECTED                        │ │
-│ │ - Pending requirements                                      │ │
-│ └─────────────────────────────────────────────────────────────┘ │
-└────────────────┬────────────────────────────────────────────────┘
-                 │
-                 │ Tool call: verify_identity()
-                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Skill (e.g., IdentitySkill)                                     │
-│ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ AgentThread (L3) - Isolated context                         │ │
-│ │ - Skill-specific conversation                               │ │
-│ │ - Not visible to Voice Live                                 │ │
-│ └─────────────────────────────────────────────────────────────┘ │
-│ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ Skill Tools                                                 │ │
-│ │ - Call adapters (L4)                                        │ │
-│ │ - Log API requests/responses                                │ │
-│ └─────────────────────────────────────────────────────────────┘ │
-└────────────────┬────────────────────────────────────────────────┘
-                 │
-                 │ Return: {structured, conversational}
-                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Orchestrator                                                     │
-│ - Update SlotStore (L2) with structured result                  │
-│ - Update PhaseState (L5) if phase transition                    │
-│ - Append to CallLog (L6)                                        │
-│ - Return conversational text to Voice Live                      │
-└─────────────────────────────────────────────────────────────────┘
+```text
+intake -> identity -> interview -> visit -> closing
 ```
 
----
+In the current handoff path, faultdesk starts at `identity` because frontdesk has already completed the intake intent capture.
 
-## Summarization Strategy
+**What belongs here:**
 
-### When to Summarize
+- Current phase.
+- Previous phase.
+- Transition history.
+- Transition triggers such as `handoff_init`, `tool_execution`, `auto_progression`, or manual phase jumps.
 
-Trigger summarization when:
-1. Voice Live context size > 80% of limit (~100K tokens)
-2. Call duration > 20 minutes (proactive)
-3. Before phase transition (optional, for clean phase boundaries)
+**How it flows:**
 
-### What to Summarize
+- Voice Live instructions include the current phase.
+- The frontend receives `phase_changed` messages.
+- MAF task prompts include the current phase through generated orchestrator instructions.
+- Call logs include phase transitions.
 
-Summarize:
-- User utterances older than 15 turns
-- Assistant responses older than 15 turns
-- Tool call results (keep tool names, summarize arguments/results)
+Example transition record:
 
-Preserve verbatim:
-- Last 10-15 turns
-- Current phase slot discussion
-- Any unresolved questions or pending clarifications
-
-### Summarization Process
-
-```python
-async def summarize_context_if_needed(session, call_log):
-    if session.token_count > THRESHOLD:
-        # Get old utterances (beyond last 15 turns)
-        old_utterances = call_log.get_utterances(end_index=-15)
-
-        # Call SummarizerSkill
-        skill = SummarizerSkill(call_id)
-        summary_result = await skill.execute({
-            "utterances": old_utterances,
-            "max_length": 500,
-            "style": "concise"
-        })
-
-        # Replace old utterances with summary
-        summary_message = {
-            "role": "system",
-            "content": f"Previous conversation summary: {summary_result['summary']}"
-        }
-
-        # Update session (remove old, add summary)
-        await session.truncate_and_summarize(
-            keep_recent=15,
-            summary=summary_message
-        )
-```
-
----
-
-## Handoff Context Transfer
-
-### Frontdesk → Faultdesk
-
-Only essential information transferred:
-
-```python
-handoff_init_message = {
-    "call_id": call_id,
-    "triage_summary": summarize_triage_conversation(),  # Use SummarizerSkill
-    "caller_attrs": {
-        "phone_number": extracted_from_caller_id,
-        "area_code_hint": "03"  # Hint for dispatch scheduling
-    },
-    "source_phase": "triage",
-    "context": {
-        "sentiment": analyze_sentiment(),
-        "urgency": classify_urgency()
-    }
+```json
+{
+  "from": "identity",
+  "to": "interview",
+  "trigger": "tool_execution",
+  "timestamp": "2026-05-02T10:03:00Z"
 }
 ```
 
-**NOT transferred**:
-- Full conversation transcript (too large, not needed)
-- Voice Live session state (new session created)
-- Frontdesk-specific context
+### Layer 4: SlotStore
 
-**Why**: Clean slate for faultdesk, avoid context pollution
+**Purpose:** Store confirmed business facts in structured form.
 
----
+`SlotStore` is the most important durable context layer. The assistant should not infer the business truth from transcript prose when a slot exists.
+
+**What belongs here:**
+
+- Identity facts such as customer ID and verification status.
+- Fault interview facts such as symptom, start time, suspected cause, and line-test results.
+- Visit facts such as candidate slots, confirmed visit, and dispatch ID.
+- Closing facts such as whether history was recorded.
+
+**How it flows:**
+
+- Voice Live instructions receive a concise snapshot of filled and pending slots.
+- MAF backend tools update slots after external system calls.
+- The frontend receives `slots_snapshot` messages for the active phase.
+- Call logs export final slot state at call end.
+
+Example after identity verification:
+
+```json
+{
+  "identity": {
+    "customer_id": "12345678",
+    "name_match": true,
+    "address_match": true,
+    "contact_phone": "03-1234-5678",
+    "verification_status": "verified"
+  },
+  "interview": {
+    "fault_symptom": "インターネットがつながらない"
+  }
+}
+```
+
+Example instruction fragment generated from slots:
+
+```text
+【現在フェーズ】
+identity
+
+【全フェーズの確定済み情報】
+- intake.greeting_done: true
+- intake.understood_intent: true
+- interview.fault_symptom: インターネットがつながらない
+
+【identityフェーズの発話】
+受付から用件は引き継ぎ済みです。故障内容の再確認ではなく、手配確認に必要なお客様番号を一つだけ質問してください。
+```
+
+### Layer 5: CallLog
+
+**Purpose:** Record the call for audit, debugging, QA, and later summarization.
+
+`CallLog` is not the primary prompt memory. It is the event record. The runtime uses concise slot and phase state for ordinary decisions, while `CallLog` preserves the fuller story.
+
+**What belongs here:**
+
+- User and assistant utterances.
+- Tool calls and results.
+- Phase transitions.
+- Start/end timestamps.
+- Handoff summary and detailed exported log.
+
+Example call log shape:
+
+```json
+{
+  "call_id": "call_abc123",
+  "started_at": "2026-05-02T10:00:00Z",
+  "ended_at": "2026-05-02T10:08:00Z",
+  "transcript": [
+    {
+      "role": "assistant",
+      "text": "故障窓口に切り替わりました。手配確認のためお客様番号をお願いします。"
+    },
+    {
+      "role": "user",
+      "text": "12345678です"
+    },
+    {
+      "role": "assistant",
+      "text": "本人確認できました、山田太郎様です。"
+    }
+  ],
+  "tool_calls": [
+    {
+      "tool": "verify_identity",
+      "arguments": {
+        "customer_id": "12345678"
+      },
+      "result": {
+        "verified": true,
+        "customer_id": "12345678"
+      }
+    }
+  ],
+  "phase_transitions": [
+    {
+      "from": null,
+      "to": "identity",
+      "trigger": "handoff_init"
+    }
+  ]
+}
+```
+
+### Layer 6: MAF Skill Task Context
+
+**Purpose:** Execute one business task according to file-based Agent Skill instructions.
+
+The current implementation uses a single faultdesk MAF agent with:
+
+- `SkillsProvider(skill_paths=SKILLS_CATALOG_PATH)` enabled by default.
+- File-based skills in `services/faultdesk/app/skills/catalog/*/SKILL.md`.
+- Backend Python tools for system actions and slot updates.
+- A fresh MAF `AgentSession` for each skill task.
+
+This means MAF context is intentionally short-lived. It is not used as the long-term conversation memory.
+
+**Why fresh sessions are used:**
+
+Full faultdesk runs with `SkillsProvider` and a reused stored `AgentSession` can produce Foundry Responses API `400 Bad Request: Invalid HTTP request received`. Revalidating showed that `SkillsProvider` itself works when each skill task uses a fresh session. Therefore:
+
+- Keep dynamic skill loading enabled.
+- Avoid reused MAF sessions for full faultdesk skill-task calls.
+- Keep durable call state in `SlotStore`, `PhaseState`, `CallLog`, and Voice Live.
+
+**Current task flow:**
+
+```text
+Voice Live tool call: verify_identity(customer_id="12345678")
+  -> Orchestrator builds a task prompt
+  -> MAF fresh AgentSession starts
+  -> SkillsProvider advertises available skills
+  -> Model calls load_skill("identity-verification")
+  -> Model follows the SKILL.md procedure
+  -> Model calls backend verify_identity tool
+  -> Backend tool updates SlotStore and CallLog
+  -> MAF returns one short customer-facing sentence
+  -> Voice Live continues the spoken conversation
+```
+
+Example MAF task prompt:
+
+```text
+現在の通話ID: call_abc123
+現在のオーケストレータ指示:
+現在フェーズ: identity
+確定済み情報: interview.fault_symptom=インターネットがつながらない
+
+実行タスク:
+本人確認フェーズです。identity-verification skill を load_skill で読み、手順に従い、必要なら verify_identity backend tool を実行してください。
+入力: customer_id=12345678, name=None, address=None.
+tool結果を踏まえ、お客様への次の一言だけを返してください。
+```
+
+Example backend tool result:
+
+```json
+{
+  "verified": true,
+  "customer_id": "12345678",
+  "verification_method": "customer_id",
+  "customer_record": {
+    "customer_id": "12345678",
+    "name": "山田太郎",
+    "address": "東京都渋谷区渋谷1-1-1",
+    "phone": "03-1234-5678"
+  }
+}
+```
+
+Example customer-facing MAF output:
+
+```text
+本人確認できました、山田太郎様です。
+```
+
+### Layer 7: Backend Tool And Adapter Logs
+
+**Purpose:** Keep integration details separate from conversational context.
+
+Backend tools call adapters for systems such as SF113, CULTAS, and AI Search. Their raw or structured results may be logged for debugging, but should not be injected into Voice Live conversation history.
+
+**What can flow back to the caller:**
+
+- A short explanation of the outcome.
+- A confirmed fact stored in `SlotStore`.
+- A next question or next action.
+
+**What should not flow back directly:**
+
+- Raw API JSON.
+- Internal confidence scores.
+- Candidate lists unless intentionally converted into a safe user-facing question.
+- Backend trace details.
+
+## End-To-End Example
+
+### 1. Frontdesk Triage
+
+User says:
+
+```text
+インターネットがつながらないです。
+```
+
+Frontdesk routes to faultdesk with:
+
+```json
+{
+  "call_id": "call_abc123",
+  "triage_summary": "インターネットがつながらない",
+  "caller_attrs": {},
+  "source_phase": "triage"
+}
+```
+
+### 2. Faultdesk Initialization
+
+Faultdesk creates:
+
+```json
+{
+  "phase_state": {
+    "current": "identity"
+  },
+  "slot_store": {
+    "intake": {
+      "greeting_done": true,
+      "understood_intent": true
+    },
+    "interview": {
+      "fault_symptom": "インターネットがつながらない"
+    }
+  }
+}
+```
+
+Initial assistant behavior:
+
+```text
+故障窓口に切り替わりました。手配確認のためお客様番号をお願いします。
+```
+
+### 3. Identity Verification
+
+User says:
+
+```text
+12345678です。
+```
+
+Voice Live calls:
+
+```json
+{
+  "tool_name": "verify_identity",
+  "arguments": {
+    "customer_id": "12345678"
+  }
+}
+```
+
+MAF dynamically loads `identity-verification` and calls the backend tool. The backend tool updates slots:
+
+```json
+{
+  "identity": {
+    "customer_id": "12345678",
+    "name_match": true,
+    "address_match": true,
+    "contact_phone": "03-1234-5678",
+    "verification_status": "verified"
+  }
+}
+```
+
+Customer-facing response:
+
+```text
+本人確認できました、山田太郎様です。
+```
+
+### 4. Fault Interview Continues With Durable State
+
+The next MAF task also uses a fresh session, but it receives the current state from `SlotStore` and `PhaseState`:
+
+```json
+{
+  "current_phase": "interview",
+  "filled_slots": {
+    "identity": {
+      "customer_id": "12345678",
+      "verification_status": "verified"
+    },
+    "interview": {
+      "fault_symptom": "インターネットがつながらない"
+    }
+  }
+}
+```
+
+So it can ask the next missing question without relying on MAF session memory:
+
+```text
+インターネットにつながらない状況ですね。いつ頃から発生していますか？
+```
+
+## Current Implementation Files
+
+- `services/frontdesk/app/main.py` - Frontdesk Voice Live session, triage tool handling, and handoff start.
+- `services/frontdesk/app/handoff/manager.py` - Service-to-service WebSocket bridge.
+- `services/faultdesk/app/main.py` - Faultdesk handoff receiver, Voice Live session, phase/slot initialization, event loop.
+- `services/faultdesk/app/orchestrator/instructions.py` - Dynamic instructions generated from phase, slots, and handoff summary.
+- `services/faultdesk/app/orchestrator/tools.py` - Voice Live tools that dispatch MAF skill tasks.
+- `services/faultdesk/app/skills/agent.py` - Single MAF agent, `SkillsProvider`, fresh per-task sessions, task-local runtime context.
+- `services/faultdesk/app/skills/tools.py` - Backend MAF tools that update `SlotStore` and `CallLog`.
+- `services/faultdesk/app/skills/catalog/*/SKILL.md` - File-based Agent Skills loaded dynamically with `load_skill`.
+- `services/faultdesk/app/slots/store.py` - Per-call structured business facts.
+- `services/faultdesk/app/orchestrator/phase_state.py` - Current phase and transition history.
+- `services/faultdesk/app/context/call_log.py` - Utterance, tool-call, phase transition, and call-end export record.
+- `services/faultdesk/app/context/thread_store.py` - Stored MAF sessions for explicit reuse cases. Not used by the active faultdesk skill-task path.
+
+## Deferred Work
+
+The following ideas are useful but are not the current implementation contract:
+
+- Context-window summarization for long Voice Live calls.
+- Structured handoff `context` with recent turns and triage slots.
+- Seeding more faultdesk slots from `caller_attrs` and structured triage context.
+- Replaying selected previous conversation items into the new desk Voice Live session.
+- Persisting call logs to Azure Blob Storage or a queryable database.
+- Reintroducing reused MAF sessions only if Foundry + `SkillsProvider` full-path behavior is proven stable.
 
 ## Best Practices
 
-### 1. Keep Voice Live Context Lean
-
-- Don't inject large structured data into conversation history
-- Use instructions injection for structured state (SlotStore)
-- Summarize aggressively to stay under limits
-
-### 2. Isolate Skill Context
-
-- Never leak skill internals to Voice Live
-- Skills should be black boxes with clean input/output
-- Use AgentThread per skill to prevent cross-contamination
-
-### 3. Log Everything Separately
-
-- Business API calls logged independently (L4)
-- Call logs exported after call completes (L6)
-- Don't pollute Voice Live context with logging data
-
-### 4. Structure Over Prose
-
-- SlotStore uses structured data (dict), not prose
-- Instructions reference slots by name
-- Reduces token usage and improves reliability
-
-### 5. Correlation IDs
-
-- Use call_id to correlate across all layers
-- Enable debugging across services
-- Support analytics and auditing
-
----
-
-## Implementation Files
-
-- `services/faultdesk/app/context/thread_store.py` - AgentThread management
-- `services/faultdesk/app/context/call_log.py` - Call log accumulation & export
-- `services/faultdesk/app/slots/store.py` - SlotStore implementation
-- `services/faultdesk/app/orchestrator/phase_state.py` - Phase transition tracking
-- `services/faultdesk/app/skills/summarizer.py` - Summarization skill
-- `packages/voiceshared/voicelive/session.py` - Context size monitoring
+1. Keep durable business state structured in `SlotStore` instead of transcript prose.
+2. Treat Voice Live context as conversational memory, not as the source of business truth.
+3. Keep `SkillsProvider` enabled so file-based skills are dynamically loaded.
+4. Use fresh MAF sessions for faultdesk skill tasks until reused sessions are revalidated end to end.
+5. Log raw backend details separately and convert them into concise, safe customer-facing replies.
+6. Include only the current phase, filled slots, pending slots, and handoff summary in recurring instructions.
+7. Use `call_id` as the correlation key across Voice Live events, MAF tasks, backend tools, and exported logs.

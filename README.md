@@ -29,11 +29,9 @@ This repository demonstrates a production-ready pattern for building intelligent
 │  Faultdesk Service (Port 8001)                    │
 │  - Voice Live orchestrator (single voice agent)   │
 │  - Phase + Slot state management                  │
-│  - Microsoft Agent Framework skills               │
-│    • IdentitySkill                                │
-│    • InterviewSkill + LineTestSkill               │
-│    • VisitScheduleSkill / VisitConfirmSkill       │
-│    • HistorySkill / SummarizerSkill               │
+│  - Microsoft Agent Framework file-based skills    │
+│    • skills/catalog/*/SKILL.md                    │
+│    • backend tools in skills/tools.py             │
 └───────────────────────────────────────────────────┘
 ```
 
@@ -89,8 +87,17 @@ uv sync
 cp services/frontdesk/.env.example services/frontdesk/.env
 cp services/faultdesk/.env.example services/faultdesk/.env
 
-# Edit .env files with your Azure credentials
+# Edit .env files with your Azure endpoints.
+# Leave API keys blank to use Microsoft Entra ID.
 ```
+
+Model configuration is intentionally split by runtime surface:
+
+- `VOICE_LIVE_MODEL` is the Voice Live realtime model identifier. The shared Voice Live wrapper passes it to `azure.ai.voicelive.aio.connect(..., model=...)`, which is the current SDK/API place where the Voice Live model is selected.
+- `FOUNDRY_PROJECT_ENDPOINT` and `FOUNDRY_MODEL` are preferred for the faultdesk Microsoft Agent Framework skill agent. When `FOUNDRY_PROJECT_ENDPOINT` is set, the agent uses `FoundryChatClient`.
+- `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_MODEL` are the fallback text backend for the MAF skill agent when `FOUNDRY_PROJECT_ENDPOINT` is blank. They can also be used by non-Foundry text/OOB code paths.
+
+For example, `VOICE_LIVE_MODEL=gpt-realtime` and `FOUNDRY_MODEL=gpt-4o` are separate choices and should not be treated as the same deployment.
 
 4. Install frontend dependencies:
 ```bash
@@ -143,17 +150,17 @@ Seamless service-to-service handoff:
 
 ### 3. Microsoft Agent Framework Skills
 
-Skills are independent agents with:
-- Dedicated system prompts and tools
-- Separate AgentThread contexts per call
-- Structured input/output contracts
-- No direct audio I/O (called via orchestrator)
+Faultdesk uses the Microsoft Agent Framework file-based Agent Skills pattern:
+- Skill instructions and references live under `services/faultdesk/app/skills/catalog/<skill-name>/SKILL.md`
+- A single faultdesk MAF `Agent` discovers those skills through `SkillsProvider(skill_paths=...)`
+- Backend actions live in `services/faultdesk/app/skills/tools.py` so they can update SlotStore and CallLog in-process
+- Voice Live calls the skill agent through orchestrator tools; skills have no direct audio I/O
 
 ### 4. Multi-Layer Context Management
 
 - **L1**: Voice Live conversation history (with summarization)
 - **L2**: SlotStore (cross-phase persistent state)
-- **L3**: Skill AgentThreads (skill-specific context)
+- **L3**: Faultdesk MAF AgentSession with file-based Agent Skills
 - **L4**: Business API logs (audit trail)
 - **L5**: Phase transition history (UI/analytics)
 - **L6**: Call logs (JSON export)

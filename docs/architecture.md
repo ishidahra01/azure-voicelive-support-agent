@@ -6,7 +6,7 @@
 1. **End-to-End Voice Support Agent**: Demonstrate a complete voice-based support flow from initial triage through task completion
 2. **Phase + Slot Conversation Model**: Structured yet flexible conversation management that prevents information gaps while allowing natural dialogue
 3. **Seamless Service Handoff**: Transfer calls between services (frontdesk → specialized desks) without disconnecting the customer
-4. **Skill-Based Architecture**: Modular business logic implemented as independent Microsoft Agent Framework skills
+4. **Skill-Based Architecture**: Modular business procedures implemented as file-based Microsoft Agent Framework Agent Skills
 5. **Extensibility**: Easy to add new desk services (billing, general inquiry, etc.) by implementing the handoff protocol
 
 ### Non-Goals (Initial Version)
@@ -63,13 +63,10 @@
 │                               │                                     │
 │  ┌────────────────────────────▼─────────────────────────────────┐  │
 │  │ Microsoft Agent Framework Skills (Text-based, no audio I/O)  │  │
-│  │  ┌──────────────┬──────────────┬─────────────┬─────────────┐ │  │
-│  │  │ IdentitySkill│ InterviewSk. │ VisitSkill  │ HistorySkill│ │  │
-│  │  │              │ + LineTest   │             │             │ │  │
-│  │  └──────┬───────┴──────┬───────┴──────┬──────┴──────┬──────┘ │  │
-│  │         │              │              │             │        │  │
-│  │  Each Skill = ChatAgent + dedicated prompt + dedicated tools  │  │
-│  │  AgentThread per call_id × skill_name for context isolation   │  │
+│  │  - Single MAF agent with SkillsProvider                      │  │
+│  │  - File skills loaded from catalog/*/SKILL.md via load_skill  │  │
+│  │  - Fresh AgentSession per backend skill task                  │  │
+│  │  - Backend tools update SlotStore and CallLog                 │  │
 │  └────────────────────────────┬─────────────────────────────────┘  │
 │                               │                                     │
 │  ┌────────────────────────────▼─────────────────────────────────┐  │
@@ -77,7 +74,7 @@
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                    │
 │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │ State: SlotStore + PhaseState + ThreadStore + CallLog        │  │
+│  │ State: SlotStore + PhaseState + CallLog                      │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────┘
 ```
@@ -88,9 +85,9 @@
 |-----------|-------------|
 | **1. Frontdesk as Gateway** | Frontdesk focuses on natural triage and routing. No complex agent logic—just simple function calling. |
 | **2. Single Voice Orchestrator** | Each desk service uses a single Voice Live session to avoid unnatural voice/personality switches. |
-| **3. Text-Based Skills** | Business logic implemented as Microsoft Agent Framework ChatAgents. No audio I/O—invoked via tools. |
+| **3. Text-Based Skills** | Business logic implemented as Microsoft Agent Framework file-based Agent Skills. No audio I/O - invoked via tools. |
 | **4. Phase + Slot Model** | Each phase defines required slots. Flexible navigation with `jump_to_phase` while maintaining slot persistence. |
-| **5. Multi-Layer Context** | Separate contexts: Voice Live main context (with summarization), Skill-specific AgentThreads, Business API logs. |
+| **5. Multi-Layer Context** | Separate contexts: Voice Live conversation, SlotStore/PhaseState business state, CallLog audit history, short-lived MAF skill task context, Business API logs. |
 | **6. Stream Handoff** | Handoff replaces Voice Live upstream while keeping browser WebSocket alive. Transparent to end user. |
 | **7. Pluggable Desks** | New desk services can be added by implementing the handoff protocol interface. |
 
@@ -137,7 +134,7 @@
 **Responsibilities:**
 - Handle fault/repair inquiries end-to-end
 - Manage Phase + Slot conversation state
-- Orchestrate multiple skills
+- Delegate backend work to MAF file-based Agent Skills
 - Maintain multi-layer context
 
 **Key Components:**
@@ -145,12 +142,12 @@
 - `app/orchestrator/`: Conversation orchestrator with dynamic instructions
 - `app/phases/`: Phase definitions and transitions
 - `app/slots/`: Slot schema and store
-- `app/skills/`: Microsoft Agent Framework skills
+- `app/skills/`: Microsoft Agent Framework Agent Skills and backend tools
 - `app/adapters/`: Mock adapters for 113SF/CULTAS/AI Search
-- `app/context/`: Thread store and call log
+- `app/context/`: Call log and optional MAF session store for explicit future reuse
 
 **Phases:**
-1. **intake**: Handoff acknowledgment and situation reconfirmation
+1. **intake**: Initial intent capture when faultdesk owns the full conversation. In frontdesk handoff flows, this is seeded as complete.
 2. **identity**: Customer verification (ID, name, address, contact)
 3. **interview**: Fault diagnosis + line test + root cause identification
 4. **visit**: Schedule proposal + confirmation + dispatch
@@ -219,9 +216,9 @@ Frontdesk                            Faultdesk
 
 | Layer | Location | Content | Impact on Voice Live |
 |-------|----------|---------|---------------------|
-| **L1: Conversation History** | Voice Live + CallLog | User/assistant utterances | Flowing (with summarization for old messages) |
+| **L1: Voice Live Session** | Active Voice Live session | Real-time spoken turns and tool-call decisions | Conversational context only |
 | **L2: SlotStore** | `slots/store.py` | Cross-phase persistent slots | **Injected into instructions every turn** |
-| **L3: Skill AgentThreads** | Agent Framework | Skill-specific conversation context | Not flowing (isolated per skill) |
+| **L3: MAF Skill Task** | Agent Framework + SkillsProvider | Dynamic `load_skill` execution with fresh AgentSession | Not flowing; only final short result returns |
 | **L4: Business API Logs** | `adapters/` | Raw API responses | Not flowing (audit only) |
 | **L5: Phase Transitions** | `orchestrator/phase_state.py` | Phase change history | UI/analytics only |
 | **L6: Call Logs** | `context/call_log.py` | Complete call record | Exported to JSON at call end |

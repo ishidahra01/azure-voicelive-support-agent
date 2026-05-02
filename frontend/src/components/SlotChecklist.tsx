@@ -12,7 +12,7 @@ interface SlotChecklistProps {
   slots: Slot[]
 }
 
-function SlotChecklist({ phase, slots }: SlotChecklistProps) {
+function SlotChecklist({ slots }: SlotChecklistProps) {
   if (!slots || slots.length === 0) {
     return null
   }

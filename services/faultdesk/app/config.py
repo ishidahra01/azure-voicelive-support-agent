@@ -20,23 +20,54 @@ class FaultdeskConfig(BaseSettings):
 
     # Azure Voice Live API
     voice_live_endpoint: str = Field(..., description="Azure Voice Live API endpoint")
-    voice_live_api_key: str = Field(..., description="Azure Voice Live API key")
+    voice_live_api_key: str = Field(
+        default="",
+        description="Azure Voice Live API key. If omitted, Microsoft Entra ID is used.",
+    )
+    voice_live_model: str = Field(
+        default="gpt-realtime",
+        description="Azure Voice Live model identifier passed to connect(model=...).",
+    )
 
-    # Azure OpenAI / Foundry
-    azure_openai_endpoint: str = Field(..., description="Azure OpenAI endpoint")
-    azure_openai_api_key: str = Field(..., description="Azure OpenAI API key")
+    # Azure OpenAI fallback for MAF text inference
+    azure_openai_endpoint: str = Field(
+        default="",
+        description="Azure OpenAI endpoint used only when Foundry project endpoint is not set.",
+    )
+    azure_openai_api_key: str = Field(
+        default="",
+        description="Azure OpenAI API key. If omitted, Microsoft Entra ID is used.",
+    )
     azure_openai_api_version: str = Field(
         default="2024-10-21", description="Azure OpenAI API version"
     )
     azure_openai_model: str = Field(
-        default="gpt-4o-realtime-preview", description="Model for Voice Live"
+        default="gpt-4o",
+        description="Azure OpenAI text model or deployment name used when Foundry is not set.",
     )
 
-    # External APIs
-    sf113_api_url: str = Field(default="http://localhost:9001/api", description="113SF API URL")
-    cultas_api_url: str = Field(default="http://localhost:9002/api", description="CULTAS API URL")
-    ai_search_endpoint: str = Field(default="", description="AI Search endpoint")
-    ai_search_api_key: str = Field(default="", description="AI Search API key")
+    # Microsoft Foundry (preferred for the MAF skill agent when set)
+    foundry_project_endpoint: str = Field(
+        default="",
+        description="Microsoft Foundry project endpoint. If set, MAF skill agents use FoundryChatClient.",
+    )
+    foundry_model: str = Field(
+        default="",
+        description="Microsoft Foundry model deployment name (e.g. gpt-4o).",
+    )
+    maf_use_skills_provider: bool = Field(
+        default=True,
+        description=(
+            "Enable MAF SkillsProvider so file-based Agent Skills are dynamically "
+            "advertised and loaded with load_skill/read_skill_resource."
+        ),
+    )
+
+    # Optional real external APIs. Current adapters are in-process mocks.
+    sf113_api_url: str = Field(default="", description="Optional real 113SF API URL")
+    cultas_api_url: str = Field(default="", description="Optional real CULTAS API URL")
+    ai_search_endpoint: str = Field(default="", description="Optional real AI Search endpoint")
+    ai_search_api_key: str = Field(default="", description="Optional real AI Search API key")
 
     # Voice configuration
     voice_name: str = Field(default="ja-JP-NanamiNeural", description="Voice to use")

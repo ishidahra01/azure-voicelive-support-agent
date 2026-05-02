@@ -202,6 +202,8 @@ class HandoffManager:
                             "slots_snapshot",
                             "tool_call",
                             "session_end",
+                            "speech_started",
+                            "speech_stopped",
                         ]:
                             await self.browser_ws.send_json(data)
 

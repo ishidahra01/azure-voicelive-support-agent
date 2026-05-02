@@ -52,10 +52,11 @@ Audio     Routing              Phase + Slot + Skills
    - Dynamic instructions injection
 
 2. **Skill-Based Business Logic**
-   - 7 independent Microsoft Agent Framework skills
-   - Isolated AgentThreads per skill
-   - Structured input/output contracts
-   - No audio I/O (text-only, invoked via tools)
+   - Microsoft Agent Framework file-based Agent Skills
+   - Skill instructions maintained in `services/faultdesk/app/skills/catalog/*/SKILL.md`
+   - One faultdesk MAF Agent discovers skills with `SkillsProvider(skill_paths=...)`
+   - Backend Python tools in `services/faultdesk/app/skills/tools.py` update SlotStore and CallLog in-process
+   - No audio I/O in skills (text-only, invoked via orchestrator tools)
 
 3. **Seamless Service Handoff**
    - WebSocket bridge maintains browser connection
@@ -73,22 +74,19 @@ Audio     Routing              Phase + Slot + Skills
 
 ## Skills Catalog
 
-| Skill | Purpose | Key Tools |
-|-------|---------|-----------|
-| **IdentitySkill** | Customer verification | sf113_get_customer, fuzzy_match |
-| **InterviewSkill** | Fault diagnosis | cultas_diagnose, ai_search_kb |
-| **LineTestSkill** | Remote line testing | sf113_run_line_test |
-| **VisitScheduleSkill** | Propose visit slots | sf113_get_visit_slots |
-| **VisitConfirmSkill** | Confirm appointment | sf113_book_visit |
-| **HistorySkill** | Record interaction | sf113_post_history |
-| **SummarizerSkill** | Summarize conversation | oob_summarize |
+- **identity-verification**: customer verification with `verify_identity` and `get_current_context`.
+- **fault-interview**: fault diagnosis and follow-up questions with `diagnose_fault` and `search_interview_knowledge`.
+- **line-test**: remote line testing with `run_line_test`.
+- **visit-scheduling**: visit slot proposal and confirmation with `propose_visit_slots` and `confirm_visit`.
+- **history-recording**: interaction summarization and persistence with `summarize_call` and `record_history`.
 
 ## Technology Stack
 
 - **Backend**: Python 3.11+, FastAPI, uvicorn
 - **Voice**: Azure Voice Live API (`azure-ai-voicelive`)
 - **Agent**: Microsoft Agent Framework (Python)
-- **LLM**: Azure OpenAI / Foundry (gpt-4o-realtime-preview)
+- **Voice model**: Azure Voice Live (`gpt-realtime` by default)
+- **Text/OOB model**: Azure OpenAI / Foundry (`gpt-4o` by default)
 - **Voice**: ja-JP-NanamiNeural
 - **Frontend**: React 18, TypeScript, Vite, Web Audio API (AudioWorklet)
 - **Config**: pydantic-settings

@@ -8,14 +8,7 @@ import logging
 from typing import Optional
 
 from voiceshared.tools import register_tool
-from app.skills import (
-    IdentitySkill,
-    InterviewSkill,
-    LineTestSkill,
-    VisitScheduleSkill,
-    VisitConfirmSkill,
-    HistorySkill,
-)
+from app.skills import run_faultdesk_agent
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +42,17 @@ def get_current_phase_state():
 def get_current_call_log():
     """Get current call log from context."""
     return _current_context.get("call_log")
+
+
+async def _run_faultdesk_skill_task(task: str) -> str:
+    """Run the MAF Agent with file-based Agent Skills for the active call."""
+    return await run_faultdesk_agent(
+        call_id=get_current_call_id(),
+        task=task,
+        slot_store=get_current_slot_store(),
+        phase_state=get_current_phase_state(),
+        call_log=get_current_call_log(),
+    )
 
 
 @register_tool(
@@ -102,31 +106,15 @@ async def verify_identity(
     name: Optional[str] = None,
     address: Optional[str] = None,
 ) -> str:
-    """Verify customer identity (calls IdentitySkill)."""
+    """Verify customer identity using the MAF Agent Skills provider."""
     logger.info(f"Verifying identity: customer_id={customer_id}")
 
-    call_id = get_current_call_id()
-    skill = IdentitySkill(call_id)
-
-    result = await skill.execute({
-        "customer_id": customer_id,
-        "name": name,
-        "address": address,
-    })
-
-    # Update slot store with structured result
-    if result.success:
-        slot_store = get_current_slot_store()
-        if slot_store:
-            for key, value in result.structured.items():
-                slot_store.set("identity", key, value)
-
-    # Log to call log
-    call_log = get_current_call_log()
-    if call_log:
-        call_log.add_tool_call("verify_identity", {"customer_id": customer_id, "name": name}, result.structured)
-
-    return result.conversational
+    return await _run_faultdesk_skill_task(
+        "本人確認フェーズです。identity-verification skill を load_skill で読み、手順に従い、"
+        "必要なら verify_identity backend tool を実行してください。"
+        f" 入力: customer_id={customer_id}, name={name}, address={address}. "
+        "tool結果を踏まえ、お客様への次の一言だけを返してください。"
+    )
 
 
 @register_tool(
@@ -140,30 +128,15 @@ async def verify_identity(
     },
 )
 async def interview_fault(symptom: Optional[str] = None, started_at: Optional[str] = None) -> str:
-    """Interview customer about fault (calls InterviewSkill)."""
+    """Interview customer about fault using the MAF Agent Skills provider."""
     logger.info(f"Interviewing fault: symptom={symptom}")
 
-    call_id = get_current_call_id()
-    skill = InterviewSkill(call_id)
-
-    result = await skill.execute({
-        "symptom": symptom,
-        "started_at": started_at,
-    })
-
-    # Update slot store
-    if result.success:
-        slot_store = get_current_slot_store()
-        if slot_store:
-            for key, value in result.structured.items():
-                slot_store.set("interview", key, value)
-
-    # Log to call log
-    call_log = get_current_call_log()
-    if call_log:
-        call_log.add_tool_call("interview_fault", {"symptom": symptom, "started_at": started_at}, result.structured)
-
-    return result.conversational
+    return await _run_faultdesk_skill_task(
+        "故障ヒアリングフェーズです。fault-interview skill を load_skill で読み、手順に従い、"
+        "必要なら diagnose_fault / search_interview_knowledge backend tool を実行してください。"
+        f" 入力: symptom={symptom}, started_at={started_at}. "
+        "未確定の重要情報があれば質問は一つだけにしてください。"
+    )
 
 
 @register_tool(
@@ -177,29 +150,14 @@ async def interview_fault(symptom: Optional[str] = None, started_at: Optional[st
     },
 )
 async def run_line_test(customer_id: str) -> str:
-    """Run line test (calls LineTestSkill)."""
+    """Run line test using the MAF Agent Skills provider."""
     logger.info(f"Running line test for customer: {customer_id}")
 
-    call_id = get_current_call_id()
-    skill = LineTestSkill(call_id)
-
-    result = await skill.execute({
-        "customer_id": customer_id,
-    })
-
-    # Update slot store
-    if result.success:
-        slot_store = get_current_slot_store()
-        if slot_store:
-            for key, value in result.structured.items():
-                slot_store.set("interview", key, value)
-
-    # Log to call log
-    call_log = get_current_call_log()
-    if call_log:
-        call_log.add_tool_call("run_line_test", {"customer_id": customer_id}, result.structured)
-
-    return result.conversational
+    return await _run_faultdesk_skill_task(
+        "line-test skill を load_skill で読み、手順に従い、run_line_test backend tool を実行してください。"
+        f" 入力: customer_id={customer_id}. "
+        "試験結果と推奨アクションを、お客様に分かる短い日本語で説明してください。"
+    )
 
 
 @register_tool(
@@ -218,31 +176,14 @@ async def propose_visit_slots(
     urgency: str = "medium",
     customer_id: Optional[str] = None,
 ) -> str:
-    """Propose visit slots (calls VisitScheduleSkill)."""
+    """Propose visit slots using the MAF Agent Skills provider."""
     logger.info(f"Proposing visit slots: area={area_code}, urgency={urgency}")
 
-    call_id = get_current_call_id()
-    skill = VisitScheduleSkill(call_id)
-
-    result = await skill.execute({
-        "customer_id": customer_id,
-        "area_code": area_code,
-        "urgency": urgency,
-    })
-
-    # Update slot store
-    if result.success:
-        slot_store = get_current_slot_store()
-        if slot_store:
-            for key, value in result.structured.items():
-                slot_store.set("visit", key, value)
-
-    # Log to call log
-    call_log = get_current_call_log()
-    if call_log:
-        call_log.add_tool_call("propose_visit_slots", {"area_code": area_code, "urgency": urgency}, result.structured)
-
-    return result.conversational
+    return await _run_faultdesk_skill_task(
+        "visit-scheduling skill を load_skill で読み、手順に従い、propose_visit_slots backend tool を実行してください。"
+        f" 入力: customer_id={customer_id}, area_code={area_code}, urgency={urgency}. "
+        "候補を最大3件まで、自然な日本語で提示してください。"
+    )
 
 
 @register_tool(
@@ -262,31 +203,14 @@ async def confirm_visit(
     confirmation: Optional[str] = None,
     customer_id: Optional[str] = None,
 ) -> str:
-    """Confirm visit (calls VisitConfirmSkill)."""
+    """Confirm visit using the MAF Agent Skills provider."""
     logger.info(f"Confirming visit: slot_id={slot_id}")
 
-    call_id = get_current_call_id()
-    skill = VisitConfirmSkill(call_id)
-
-    result = await skill.execute({
-        "customer_id": customer_id,
-        "slot_id": slot_id,
-        "customer_confirmation": confirmation,
-    })
-
-    # Update slot store
-    if result.success:
-        slot_store = get_current_slot_store()
-        if slot_store:
-            for key, value in result.structured.items():
-                slot_store.set("visit", key, value)
-
-    # Log to call log
-    call_log = get_current_call_log()
-    if call_log:
-        call_log.add_tool_call("confirm_visit", {"slot_id": slot_id, "customer_id": customer_id}, result.structured)
-
-    return result.conversational
+    return await _run_faultdesk_skill_task(
+        "visit-scheduling skill を load_skill で読み、手順に従い、confirm_visit backend tool を実行してください。"
+        f" 入力: customer_id={customer_id}, slot_id={slot_id}, confirmation={confirmation}. "
+        "確定した日時と手配番号を短く復唱してください。"
+    )
 
 
 @register_tool(
@@ -301,29 +225,14 @@ async def confirm_visit(
     },
 )
 async def record_history(summary: str, customer_id: Optional[str] = None) -> str:
-    """Record history (calls HistorySkill)."""
+    """Record history using the MAF Agent Skills provider."""
     logger.info(f"Recording history: {summary}")
 
-    call_id = get_current_call_id()
-    skill = HistorySkill(call_id)
-
-    result = await skill.execute({
-        "customer_id": customer_id,
-        "summary": summary,
-    })
-
-    # Update slot store
-    if result.success:
-        slot_store = get_current_slot_store()
-        if slot_store:
-            slot_store.set("closing", "history_recorded", True)
-
-    # Log to call log
-    call_log = get_current_call_log()
-    if call_log:
-        call_log.add_tool_call("record_history", {"summary": summary, "customer_id": customer_id}, result.structured)
-
-    return result.conversational
+    return await _run_faultdesk_skill_task(
+        "history-recording skill を load_skill で読み、手順に従い、record_history backend tool を実行してください。"
+        f" 入力: customer_id={customer_id}, summary={summary}. "
+        "お客様には記録した旨だけを1文で伝えてください。"
+    )
 
 
 @register_tool(

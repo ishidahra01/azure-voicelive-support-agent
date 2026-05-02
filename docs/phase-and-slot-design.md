@@ -96,7 +96,7 @@ This design enables:
 - `verification_status == "verified"` → Proceed to `interview`
 - `verification_status == "failed"` after 3 attempts → Escalate to operator
 
-**Skill Called**: `IdentitySkill`
+**Skill Called**: `identity-verification` file-based Agent Skill via `SkillsProvider`
 
 ### 3. interview (Fault Diagnosis)
 
@@ -149,7 +149,7 @@ This design enables:
 - Automatic after `identity` phase
 - Manual via `jump_to_phase("interview")` if customer mentions fault details
 
-**Skills Called**: `InterviewSkill`, `LineTestSkill`
+**Skills Called**: `fault-interview` and `line-test` file-based Agent Skills via `SkillsProvider`
 
 **Complex Logic**:
 - May require multiple rounds of questioning
@@ -207,7 +207,7 @@ This design enables:
 - Automatic after `interview` phase (if `visit_required`)
 - Skip if remote resolution possible
 
-**Skills Called**: `VisitScheduleSkill`, `VisitConfirmSkill`
+**Skills Called**: `visit-scheduling` file-based Agent Skill via `SkillsProvider`
 
 **Business Rules**:
 - Slots retrieved from dispatch system (CULTAS)
@@ -254,7 +254,7 @@ This design enables:
 - Automatic after `visit` phase confirmation
 - Manual if customer wants to end call
 
-**Skills Called**: `HistorySkill`
+**Skills Called**: `history-recording` file-based Agent Skill via `SkillsProvider`
 
 **Exit Conditions**:
 - `closing_complete == True` → End call with `session_end`

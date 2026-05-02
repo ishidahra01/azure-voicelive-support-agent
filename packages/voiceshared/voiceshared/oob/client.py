@@ -8,17 +8,29 @@ such as summarization, classification, and other text processing operations.
 import logging
 from typing import Any, Dict, List, Optional
 
+from azure.identity.aio import DefaultAzureCredential, get_bearer_token_provider
 from openai import AsyncAzureOpenAI
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+_AZURE_OPENAI_SCOPE = "https://cognitiveservices.azure.com/.default"
+_PLACEHOLDER_API_KEYS = {
+    "your_azure_openai_api_key_here",
+    "your_voice_live_api_key_here",
+    "<key>",
+}
+
+
+def _has_api_key(api_key: Optional[str]) -> bool:
+    return bool(api_key and api_key.strip() and api_key.strip() not in _PLACEHOLDER_API_KEYS)
 
 
 class OOBConfig(BaseModel):
     """Configuration for OOB client."""
 
     endpoint: str
-    api_key: str
+    api_key: Optional[str] = None
     api_version: str = "2024-10-21"
     model: str = "gpt-4o"
     temperature: float = 0.7
@@ -41,11 +53,22 @@ class OOBClient:
             config: OOB configuration
         """
         self.config = config
-        self.client = AsyncAzureOpenAI(
-            azure_endpoint=config.endpoint,
-            api_key=config.api_key,
-            api_version=config.api_version,
-        )
+        self.credential: Optional[DefaultAzureCredential] = None
+
+        if _has_api_key(config.api_key):
+            self.client = AsyncAzureOpenAI(
+                azure_endpoint=config.endpoint,
+                api_key=config.api_key.strip(),
+                api_version=config.api_version,
+            )
+        else:
+            self.credential = DefaultAzureCredential()
+            token_provider = get_bearer_token_provider(self.credential, _AZURE_OPENAI_SCOPE)
+            self.client = AsyncAzureOpenAI(
+                azure_endpoint=config.endpoint,
+                azure_ad_token_provider=token_provider,
+                api_version=config.api_version,
+            )
 
     async def complete(
         self,
@@ -223,11 +246,13 @@ JSONのみを返し、他のテキストは含めないでください。"""
     async def close(self) -> None:
         """Close the client and clean up resources."""
         await self.client.close()
+        if self.credential:
+            await self.credential.close()
 
 
 async def create_oob_client(
     endpoint: str,
-    api_key: str,
+    api_key: Optional[str] = None,
     **kwargs,
 ) -> OOBClient:
     """
@@ -235,7 +260,7 @@ async def create_oob_client(
 
     Args:
         endpoint: Azure OpenAI endpoint URL
-        api_key: API key
+        api_key: API key. If omitted, Microsoft Entra ID is used.
         **kwargs: Additional config arguments
 
     Returns:

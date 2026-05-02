@@ -1,27 +1,18 @@
 """
-Skills for business logic execution.
+Microsoft Agent Framework file-based Agent Skills for faultdesk.
 
-Skills are independent agents that handle specific tasks like identity verification,
-fault diagnosis, visit scheduling, etc.
+Skill instructions are maintained as ``catalog/*/SKILL.md`` files and attached
+to a single MAF ``Agent`` through ``SkillsProvider``. Backend actions are Python
+tools so they can update per-call SlotStore and CallLog in-process.
 """
 
-from .base import BaseSkill, SkillResult
-from .identity import IdentitySkill
-from .interview import InterviewSkill
-from .line_test import LineTestSkill
-from .visit_schedule import VisitScheduleSkill
-from .visit_confirm import VisitConfirmSkill
-from .history import HistorySkill
-from .summarizer import SummarizerSkill
+from .agent import get_faultdesk_agent, get_faultdesk_session, run_faultdesk_agent
+from .tools import SKILLS_CATALOG_PATH, get_faultdesk_tools
 
 __all__ = [
-    "BaseSkill",
-    "SkillResult",
-    "IdentitySkill",
-    "InterviewSkill",
-    "LineTestSkill",
-    "VisitScheduleSkill",
-    "VisitConfirmSkill",
-    "HistorySkill",
-    "SummarizerSkill",
+    "get_faultdesk_agent",
+    "get_faultdesk_session",
+    "get_faultdesk_tools",
+    "SKILLS_CATALOG_PATH",
+    "run_faultdesk_agent",
 ]

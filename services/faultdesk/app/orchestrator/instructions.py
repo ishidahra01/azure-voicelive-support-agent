@@ -52,6 +52,12 @@ def generate_instructions(
 【全フェーズの確定済み情報】
 {filled_slots_text}
 
+【会話方針】
+- 受付から引き継がれた情報は既知の事実として扱い、同じ用件を聞き直さないでください
+- 「承知しました」「確認します」の反復を避け、各応答は原則2文以内にしてください
+- お客様が短時間で済ませたい意向を示したら、挨拶や前置きを短くして次の未確定項目を一つだけ聞いてください
+- 「ここまでの内容で問題ないですか」のような進行確認だけの質問は避けてください
+
 【ガイダンス】
 - 未確定項目を順に自然な質問で埋めてください。1問1答を心がけ、長くなりすぎないこと
 - お客様が話題を変えた場合は jump_to_phase ツールで該当フェーズに移ってください
@@ -62,6 +68,18 @@ def generate_instructions(
 
     if handoff_summary:
         instructions += f"\n【引き継ぎサマリ（受付からの申し送り）】\n{handoff_summary}\n"
+
+    if current_phase == "identity":
+        instructions += (
+            "\n【identityフェーズの発話】\n"
+            "受付から用件は引き継ぎ済みです。故障内容の再確認ではなく、"
+            "手配確認に必要なお客様番号を一つだけ質問してください。\n"
+        )
+    elif current_phase == "interview":
+        instructions += (
+            "\n【interviewフェーズの発話】\n"
+            "確定済みの故障症状を繰り返し確認せず、未確定の発生時期や機器状況を一つずつ質問してください。\n"
+        )
 
     return instructions
 

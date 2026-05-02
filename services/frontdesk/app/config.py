@@ -26,16 +26,13 @@ class FrontdeskConfig(BaseSettings):
 
     # Azure Voice Live API
     voice_live_endpoint: str = Field(..., description="Azure Voice Live API endpoint")
-    voice_live_api_key: str = Field(..., description="Azure Voice Live API key")
-
-    # Azure OpenAI / Foundry
-    azure_openai_endpoint: str = Field(..., description="Azure OpenAI endpoint")
-    azure_openai_api_key: str = Field(..., description="Azure OpenAI API key")
-    azure_openai_api_version: str = Field(
-        default="2024-10-21", description="Azure OpenAI API version"
+    voice_live_api_key: str = Field(
+        default="",
+        description="Azure Voice Live API key. If omitted, Microsoft Entra ID is used.",
     )
-    azure_openai_model: str = Field(
-        default="gpt-4o-realtime-preview", description="Model for Voice Live"
+    voice_live_model: str = Field(
+        default="gpt-realtime",
+        description="Azure Voice Live model identifier passed to connect(model=...).",
     )
 
     # Desk service URLs
@@ -43,10 +40,10 @@ class FrontdeskConfig(BaseSettings):
         default="ws://localhost:8001/ws/desk", description="Faultdesk WebSocket URL"
     )
     billing_desk_ws_url: str = Field(
-        default="ws://localhost:8002/ws/desk", description="Billingdesk WebSocket URL"
+        default="", description="Optional Billingdesk WebSocket URL"
     )
     general_desk_ws_url: str = Field(
-        default="ws://localhost:8003/ws/desk", description="Generaldesk WebSocket URL"
+        default="", description="Optional Generaldesk WebSocket URL"
     )
 
     # Voice configuration

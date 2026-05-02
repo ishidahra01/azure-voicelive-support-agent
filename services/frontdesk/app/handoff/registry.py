@@ -16,11 +16,14 @@ class DeskRegistry:
     """Registry of desk service endpoints."""
 
     def __init__(self):
-        self._desks: Dict[str, str] = {
+        self._desks: Dict[str, str] = {}
+        for desk_name, ws_url in {
             "fault": config.fault_desk_ws_url,
             "billing": config.billing_desk_ws_url,
             "general": config.general_desk_ws_url,
-        }
+        }.items():
+            if ws_url:
+                self._desks[desk_name] = ws_url
 
     def get_desk_url(self, desk_name: str) -> Optional[str]:
         """

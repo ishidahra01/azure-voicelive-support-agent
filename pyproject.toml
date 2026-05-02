@@ -5,6 +5,11 @@ description = "An end-to-end sample of a voice-based support agent built on Azur
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+dependencies = [
+    "faultdesk",
+    "frontdesk",
+    "voiceshared",
+]
 
 [tool.uv.workspace]
 members = [
@@ -12,6 +17,11 @@ members = [
     "services/faultdesk",
     "packages/voiceshared"
 ]
+
+[tool.uv.sources]
+faultdesk = { workspace = true }
+frontdesk = { workspace = true }
+voiceshared = { workspace = true }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

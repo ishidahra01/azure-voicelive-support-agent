@@ -1,142 +1,76 @@
 """
-Thread store for managing skill-specific AgentThread contexts.
+Microsoft Agent Framework ``AgentSession`` store.
 
-Each skill maintains its own conversation context per call_id to avoid
-context pollution between different business logic domains.
+Sessions are keyed by ``call_id`` plus an agent scope for callers that need
+explicitly reused MAF context. Faultdesk skill tasks currently use fresh
+sessions in ``run_faultdesk_agent``; durable call state lives in Voice Live,
+SlotStore, and CallLog.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 
-class AgentThread:
-    """
-    Mock AgentThread for skill context management.
-
-    In a real implementation with Microsoft Agent Framework, this would be
-    the actual AgentThread class from the framework.
-    """
-
-    def __init__(self, thread_id: str):
-        """
-        Initialize thread.
-
-        Args:
-            thread_id: Unique thread identifier (call_id:skill_name)
-        """
-        self.thread_id = thread_id
-        self.messages: list = []
-        self.metadata: Dict = {}
-
-    def add_message(self, role: str, content: str):
-        """Add message to thread."""
-        self.messages.append({"role": role, "content": content})
-
-    def get_messages(self) -> list:
-        """Get all messages in thread."""
-        return self.messages.copy()
-
-    def clear(self):
-        """Clear thread messages."""
-        self.messages.clear()
-
-
 class ThreadStore:
-    """
-    Store and retrieve AgentThread instances for skills.
+    """Store and retrieve MAF ``AgentSession`` instances per (call_id, scope)."""
 
-    Maintains separate conversation contexts for each skill within a call.
-    """
+    def __init__(self) -> None:
+        self._sessions: Dict[str, Any] = {}
 
-    def __init__(self):
-        """Initialize thread store."""
-        self._threads: Dict[str, AgentThread] = {}
+    @staticmethod
+    def _key(call_id: str, scope: str) -> str:
+        return f"{call_id}:{scope}"
 
-    def get_or_create(self, call_id: str, skill_name: str) -> AgentThread:
+    def get_or_create(self, call_id: str, scope: str, agent: Any) -> Any:
+        """Return the MAF ``AgentSession`` for the scope, creating it if missing.
+
+        The session is produced via ``agent.create_session()`` so that callers
+        can opt into persisted MAF context across turns when appropriate.
         """
-        Get or create AgentThread for a skill.
-
-        Args:
-            call_id: Call identifier
-            skill_name: Skill name (identity, interview, etc.)
-
-        Returns:
-            AgentThread instance
-        """
-        thread_id = f"{call_id}:{skill_name}"
-
-        if thread_id not in self._threads:
-            logger.info(f"Creating new thread: {thread_id}")
-            self._threads[thread_id] = AgentThread(thread_id)
+        key = self._key(call_id, scope)
+        session = self._sessions.get(key)
+        if session is None:
+            logger.info("Creating new MAF AgentSession: %s", key)
+            session = agent.create_session()
+            self._sessions[key] = session
         else:
-            logger.debug(f"Retrieving existing thread: {thread_id}")
+            logger.debug("Reusing MAF AgentSession: %s", key)
+        return session
 
-        return self._threads[thread_id]
+    def get(self, call_id: str, scope: str) -> Optional[Any]:
+        return self._sessions.get(self._key(call_id, scope))
 
-    def get(self, call_id: str, skill_name: str) -> Optional[AgentThread]:
-        """
-        Get existing AgentThread.
+    def remove(self, call_id: str, scope: Optional[str] = None) -> None:
+        if scope:
+            key = self._key(call_id, scope)
+            if key in self._sessions:
+                logger.info("Removing MAF AgentSession: %s", key)
+                del self._sessions[key]
+            return
 
-        Args:
-            call_id: Call identifier
-            skill_name: Skill name
-
-        Returns:
-            AgentThread instance or None if not found
-        """
-        thread_id = f"{call_id}:{skill_name}"
-        return self._threads.get(thread_id)
-
-    def remove(self, call_id: str, skill_name: Optional[str] = None):
-        """
-        Remove thread(s) for a call.
-
-        Args:
-            call_id: Call identifier
-            skill_name: Optional skill name. If None, removes all threads for call.
-        """
-        if skill_name:
-            thread_id = f"{call_id}:{skill_name}"
-            if thread_id in self._threads:
-                logger.info(f"Removing thread: {thread_id}")
-                del self._threads[thread_id]
-        else:
-            # Remove all threads for this call
-            prefix = f"{call_id}:"
-            to_remove = [tid for tid in self._threads if tid.startswith(prefix)]
-            for tid in to_remove:
-                logger.info(f"Removing thread: {tid}")
-                del self._threads[tid]
-
-    def get_all_for_call(self, call_id: str) -> Dict[str, AgentThread]:
-        """
-        Get all threads for a call.
-
-        Args:
-            call_id: Call identifier
-
-        Returns:
-            Dict mapping skill_name to AgentThread
-        """
         prefix = f"{call_id}:"
-        threads = {}
+        for key in [k for k in self._sessions if k.startswith(prefix)]:
+            logger.info("Removing MAF AgentSession: %s", key)
+            del self._sessions[key]
 
-        for thread_id, thread in self._threads.items():
-            if thread_id.startswith(prefix):
-                skill_name = thread_id[len(prefix) :]
-                threads[skill_name] = thread
+    def get_all_for_call(self, call_id: str) -> Dict[str, Any]:
+        prefix = f"{call_id}:"
+        return {
+            key[len(prefix):]: session
+            for key, session in self._sessions.items()
+            if key.startswith(prefix)
+        }
 
-        return threads
 
-
-# Global instance
 _thread_store: Optional[ThreadStore] = None
 
 
 def get_thread_store() -> ThreadStore:
-    """Get or create global ThreadStore instance."""
+    """Return the process-wide ``ThreadStore`` singleton."""
     global _thread_store
     if _thread_store is None:
         _thread_store = ThreadStore()
